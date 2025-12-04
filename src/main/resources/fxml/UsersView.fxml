@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+
+<BorderPane xmlns="http://javafx.com/javafx"
+            xmlns:fx="http://javafx.com/fxml"
+            fx:controller="org.santayn.bankdeposit.ui.UsersController">
+
+    <!-- Центр: таблица пользователей -->
+    <center>
+        <TableView fx:id="usersTable" prefHeight="300.0">
+            <columns>
+                <TableColumn fx:id="colId" text="ID" prefWidth="60.0"/>
+                <TableColumn fx:id="colUsername" text="Логин" prefWidth="150.0"/>
+                <TableColumn fx:id="colFullName" text="ФИО" prefWidth="220.0"/>
+                <TableColumn fx:id="colRole" text="Роль" prefWidth="120.0"/>
+                <TableColumn fx:id="colActive" text="Активен" prefWidth="80.0"/>
+            </columns>
+        </TableView>
+    </center>
+
+    <!-- Низ: форма редактирования пользователя -->
+    <bottom>
+        <VBox spacing="10.0" padding="10.0">
+            <children>
+                <GridPane hgap="10.0" vgap="10.0">
+                    <columnConstraints>
+                        <ColumnConstraints minWidth="100.0" halignment="RIGHT"/>
+                        <ColumnConstraints minWidth="200.0" hgrow="ALWAYS"/>
+                        <ColumnConstraints minWidth="100.0" halignment="RIGHT"/>
+                        <ColumnConstraints minWidth="200.0" hgrow="ALWAYS"/>
+                    </columnConstraints>
+
+                    <children>
+                        <Label text="Логин:"
+                               GridPane.rowIndex="0" GridPane.columnIndex="0"/>
+                        <TextField fx:id="usernameField"
+                                   GridPane.rowIndex="0" GridPane.columnIndex="1"/>
+
+                        <Label text="ФИО:"
+                               GridPane.rowIndex="0" GridPane.columnIndex="2"/>
+                        <TextField fx:id="fullNameField"
+                                   GridPane.rowIndex="0" GridPane.columnIndex="3"/>
+
+                        <Label text="Пароль:"
+                               GridPane.rowIndex="1" GridPane.columnIndex="0"/>
+                        <TextField fx:id="passwordField"
+                                   GridPane.rowIndex="1" GridPane.columnIndex="1"/>
+
+                        <Label text="Роль:"
+                               GridPane.rowIndex="1" GridPane.columnIndex="2"/>
+                        <ComboBox fx:id="roleCombo"
+                                  GridPane.rowIndex="1" GridPane.columnIndex="3"/>
+
+                        <Label text="Активен:"
+                               GridPane.rowIndex="2" GridPane.columnIndex="0"/>
+                        <CheckBox fx:id="activeCheckBox"
+                                  GridPane.rowIndex="2" GridPane.columnIndex="1"
+                                  selected="true"/>
+                    </children>
+                </GridPane>
+
+                <HBox spacing="10.0">
+                    <children>
+                        <Button fx:id="addButton" text="Добавить" onAction="#onAddUser"/>
+                        <Button fx:id="updateButton" text="Изменить" onAction="#onUpdateUser"/>
+                        <Button fx:id="deleteButton" text="Удалить" onAction="#onDeleteUser"/>
+                    </children>
+                </HBox>
+            </children>
+        </VBox>
+    </bottom>
+
+</BorderPane>

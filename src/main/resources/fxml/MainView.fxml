@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.Label?>
+<?import javafx.scene.control.Menu?>
+<?import javafx.scene.control.MenuBar?>
+<?import javafx.scene.control.MenuItem?>
+<?import javafx.scene.control.Tab?>
+<?import javafx.scene.control.TabPane?>
+<?import javafx.scene.layout.BorderPane?>
+<?import javafx.scene.layout.HBox?>
+
+<BorderPane xmlns="http://javafx.com/javafx/21"
+            xmlns:fx="http://javafx.com/fxml/1"
+            fx:controller="org.santayn.bankdeposit.ui.MainController">
+
+    <!-- Верхнее меню -->
+    <top>
+        <MenuBar>
+            <menus>
+                <Menu text="Файл">
+                    <items>
+                        <MenuItem text="Выход" onAction="#onExit"/>
+                    </items>
+                </Menu>
+
+                <Menu text="Справка">
+                    <items>
+                        <MenuItem text="О программе" onAction="#onAbout"/>
+                    </items>
+                </Menu>
+            </menus>
+        </MenuBar>
+    </top>
+
+    <!-- Центральная часть – вкладки -->
+    <center>
+        <TabPane fx:id="mainTabPane">
+            <tabs>
+                <Tab text="Клиенты" closable="false">
+                    <content>
+                        <Label text="Здесь будет список клиентов"/>
+                    </content>
+                </Tab>
+                <Tab text="Договоры вкладов" closable="false">
+                    <content>
+                        <Label text="Здесь будет список договоров вкладов"/>
+                    </content>
+                </Tab>
+                <Tab text="Операции" closable="false">
+                    <content>
+                        <Label text="Здесь будет список операций по вкладам"/>
+                    </content>
+                </Tab>
+                <Tab text="Пользователи" closable="false">
+                    <content>
+                        <Label text="Здесь будет управление пользователями"/>
+                    </content>
+                </Tab>
+                <Tab text="Отчёты" closable="false">
+                    <content>
+                        <Label text="Здесь будет оформление отчётов"/>
+                    </content>
+                </Tab>
+            </tabs>
+        </TabPane>
+    </center>
+
+    <!-- Статус-бар внизу -->
+    <bottom>
+        <HBox spacing="10.0">
+            <padding>
+                <Insets top="10.0" right="10.0" bottom="10.0" left="10.0"/>
+            </padding>
+            <children>
+                <Label text="Текущий пользователь:"/>
+                <Label fx:id="currentUserLabel" text="неизвестен"/>
+            </children>
+        </HBox>
+    </bottom>
+
+</BorderPane>

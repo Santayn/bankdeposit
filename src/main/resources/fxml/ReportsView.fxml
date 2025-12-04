@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+
+<BorderPane xmlns="http://javafx.com/javafx"
+            xmlns:fx="http://javafx.com/fxml"
+            fx:controller="org.santayn.bankdeposit.ui.ReportsController">
+
+    <center>
+        <VBox spacing="10.0" padding="10.0">
+            <children>
+
+                <!-- Блок: Отчёт по вкладам клиента -->
+                <TitledPane text="Отчёт по вкладам клиента" expanded="true">
+                    <content>
+                        <VBox spacing="10.0" padding="10.0">
+                            <children>
+                                <HBox spacing="10.0">
+                                    <children>
+                                        <Label text="Клиент:"/>
+                                        <ComboBox fx:id="reportCustomerCombo" prefWidth="250.0"/>
+                                        <Button text="Показать вклады"
+                                                onAction="#onLoadCustomerContracts"/>
+                                    </children>
+                                </HBox>
+
+                                <TableView fx:id="customerContractsTable" prefHeight="200.0">
+                                    <columns>
+                                        <TableColumn fx:id="colCustContrNumber" text="№ договора" prefWidth="120.0"/>
+                                        <TableColumn fx:id="colCustContrProduct" text="Продукт" prefWidth="180.0"/>
+                                        <TableColumn fx:id="colCustContrOpenDate" text="Открыт" prefWidth="90.0"/>
+                                        <TableColumn fx:id="colCustContrCloseDate" text="Закрыт" prefWidth="90.0"/>
+                                        <TableColumn fx:id="colCustContrBalance" text="Баланс" prefWidth="100.0"/>
+                                        <TableColumn fx:id="colCustContrStatus" text="Статус" prefWidth="90.0"/>
+                                    </columns>
+                                </TableView>
+                            </children>
+                        </VBox>
+                    </content>
+                </TitledPane>
+
+                <!-- Блок: Отчёт по операциям за период -->
+                <TitledPane text="Отчёт по операциям за период" expanded="true">
+                    <content>
+                        <VBox spacing="10.0" padding="10.0">
+                            <children>
+                                <HBox spacing="10.0">
+                                    <children>
+                                        <Label text="С:"/>
+                                        <DatePicker fx:id="fromDatePicker"/>
+                                        <Label text="По:"/>
+                                        <DatePicker fx:id="toDatePicker"/>
+                                        <Label text="Тип операции:"/>
+                                        <ComboBox fx:id="opTypeCombo" prefWidth="180.0"/>
+                                        <Button text="Сформировать отчёт"
+                                                onAction="#onLoadOperationsReport"/>
+                                    </children>
+                                </HBox>
+
+                                <TableView fx:id="operationsReportTable" prefHeight="220.0">
+                                    <columns>
+                                        <TableColumn fx:id="colRepOpDateTime" text="Дата и время" prefWidth="160.0"/>
+                                        <TableColumn fx:id="colRepOpType" text="Тип" prefWidth="120.0"/>
+                                        <TableColumn fx:id="colRepOpAmount" text="Сумма" prefWidth="100.0"/>
+                                        <TableColumn fx:id="colRepOpContract" text="№ договора" prefWidth="120.0"/>
+                                        <TableColumn fx:id="colRepOpCustomer" text="Клиент" prefWidth="180.0"/>
+                                        <TableColumn fx:id="colRepOpDescription" text="Описание" prefWidth="250.0"/>
+                                    </columns>
+                                </TableView>
+
+                                <HBox spacing="10.0">
+                                    <children>
+                                        <Label text="Итого сумма по найденным операциям:"/>
+                                        <TextField fx:id="totalAmountField" editable="false" prefWidth="150.0"/>
+                                    </children>
+                                </HBox>
+                            </children>
+                        </VBox>
+                    </content>
+                </TitledPane>
+
+            </children>
+        </VBox>
+    </center>
+
+</BorderPane>

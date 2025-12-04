@@ -1,0 +1,115 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+
+<BorderPane xmlns="http://javafx.com/javafx"
+            xmlns:fx="http://javafx.com/fxml"
+            fx:controller="org.santayn.bankdeposit.ui.CustomersController"
+            xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://javafx.com/javafx ">
+
+    <!-- Верхняя панель: поиск и кнопка обновления -->
+    <top>
+        <HBox spacing="10.0" padding="10.0">
+            <children>
+                <Label text="Поиск по фамилии:"/>
+                <TextField fx:id="searchLastNameField" prefWidth="200.0"/>
+                <Button fx:id="refreshButton" text="Обновить" onAction="#onRefresh"/>
+                <Button text="Найти" onAction="#onSearch"/>
+            </children>
+        </HBox>
+    </top>
+
+    <!-- Центр: таблица клиентов -->
+    <center>
+        <TableView fx:id="customersTable" prefHeight="400.0" prefWidth="600.0">
+            <columns>
+                <TableColumn fx:id="colId" text="ID" prefWidth="50.0"/>
+                <TableColumn fx:id="colLastName" text="Фамилия" prefWidth="150.0"/>
+                <TableColumn fx:id="colFirstName" text="Имя" prefWidth="150.0"/>
+                <TableColumn fx:id="colPassport" text="Паспорт" prefWidth="150.0"/>
+                <TableColumn fx:id="colPhone" text="Телефон" prefWidth="150.0"/>
+            </columns>
+        </TableView>
+    </center>
+
+    <!-- Низ: форма редактирования/добавления клиента -->
+    <bottom>
+        <VBox spacing="10.0" padding="10.0">
+            <children>
+                <GridPane hgap="10.0" vgap="10.0">
+                    <columnConstraints>
+                        <ColumnConstraints halignment="RIGHT" minWidth="100.0"/>
+                        <ColumnConstraints minWidth="200.0" hgrow="ALWAYS"/>
+                        <ColumnConstraints halignment="RIGHT" minWidth="100.0"/>
+                        <ColumnConstraints minWidth="200.0" hgrow="ALWAYS"/>
+                    </columnConstraints>
+
+                    <rowConstraints>
+                        <RowConstraints minHeight="30.0"/>
+                        <RowConstraints minHeight="30.0"/>
+                        <RowConstraints minHeight="30.0"/>
+                        <RowConstraints minHeight="30.0"/>
+                    </rowConstraints>
+
+                    <children>
+                        <!-- Первая строка -->
+                        <Label text="Фамилия:" GridPane.rowIndex="0" GridPane.columnIndex="0"/>
+                        <TextField fx:id="lastNameField"
+                                   GridPane.rowIndex="0" GridPane.columnIndex="1"/>
+
+                        <Label text="Имя:" GridPane.rowIndex="0" GridPane.columnIndex="2"/>
+                        <TextField fx:id="firstNameField"
+                                   GridPane.rowIndex="0" GridPane.columnIndex="3"/>
+
+                        <!-- Вторая строка -->
+                        <Label text="Отчество:"
+                               GridPane.rowIndex="1" GridPane.columnIndex="0"/>
+                        <TextField fx:id="middleNameField"
+                                   GridPane.rowIndex="1" GridPane.columnIndex="1"/>
+
+                        <Label text="Дата рождения:"
+                               GridPane.rowIndex="1" GridPane.columnIndex="2"/>
+                        <DatePicker fx:id="dateOfBirthPicker"
+                                    GridPane.rowIndex="1" GridPane.columnIndex="3"/>
+
+                        <!-- Третья строка -->
+                        <Label text="Паспорт:"
+                               GridPane.rowIndex="2" GridPane.columnIndex="0"/>
+                        <TextField fx:id="passportField"
+                                   GridPane.rowIndex="2" GridPane.columnIndex="1"/>
+
+                        <Label text="Телефон:"
+                               GridPane.rowIndex="2" GridPane.columnIndex="2"/>
+                        <TextField fx:id="phoneField"
+                                   GridPane.rowIndex="2" GridPane.columnIndex="3"/>
+
+                        <!-- Четвёртая строка -->
+                        <Label text="Email:"
+                               GridPane.rowIndex="3" GridPane.columnIndex="0"/>
+                        <TextField fx:id="emailField"
+                                   GridPane.rowIndex="3" GridPane.columnIndex="1"/>
+
+                        <Label text="Адрес:"
+                               GridPane.rowIndex="3" GridPane.columnIndex="2"/>
+                        <TextField fx:id="addressField"
+                                   GridPane.rowIndex="3" GridPane.columnIndex="3"/>
+                    </children>
+                </GridPane>
+
+                <HBox spacing="10.0">
+                    <children>
+                        <Button fx:id="addButton" text="Добавить" onAction="#onAdd"/>
+                        <Button fx:id="updateButton" text="Изменить" onAction="#onUpdate"/>
+                        <Button fx:id="deleteButton" text="Удалить" onAction="#onDelete"/>
+                    </children>
+                    <padding>
+                        <Insets top="5.0" bottom="5.0"/>
+                    </padding>
+                </HBox>
+            </children>
+        </VBox>
+    </bottom>
+
+</BorderPane>
