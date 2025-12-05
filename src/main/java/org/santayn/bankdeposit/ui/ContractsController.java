@@ -6,18 +6,19 @@ import javafx.collections.ObservableList;
 import javafx.fxml.FXML;
 import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
+import javafx.scene.control.ButtonType;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.DatePicker;
+import javafx.scene.control.ListCell;
 import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableView;
 import javafx.scene.control.TextField;
-import javafx.scene.control.TextInputDialog;
 import javafx.scene.control.cell.PropertyValueFactory;
+import javafx.util.StringConverter;
 import lombok.RequiredArgsConstructor;
 import org.santayn.bankdeposit.models.Customer;
 import org.santayn.bankdeposit.models.DepositContract;
-import org.santayn.bankdeposit.models.DepositOperation;
-import org.santayn.bankdeposit.models.DepositOperationType;
+import org.santayn.bankdeposit.models.DepositContractStatus;
 import org.santayn.bankdeposit.models.DepositProduct;
 import org.santayn.bankdeposit.service.CustomerService;
 import org.santayn.bankdeposit.service.DepositContractService;
@@ -28,20 +29,10 @@ import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
-import java.time.format.DateTimeFormatter;
 import java.util.List;
-import java.util.Optional;
 
 /**
  * Контроллер вкладки "Вклады".
- * Позволяет:
- * - просматривать список депозитных договоров;
- * - открывать новый вклад;
- * - пополнять вклад;
- * - снимать средства;
- * - начислять проценты;
- * - закрывать вклад;
- * - просматривать операции по выбранному договору.
  */
 @Component
 @RequiredArgsConstructor
@@ -56,67 +47,48 @@ public class ContractsController {
     private TableView<DepositContract> contractsTable;
 
     @FXML
-    private TableColumn<DepositContract, Long> colId;
+    private TableColumn<DepositContract, Long> idColumn;
 
     @FXML
-    private TableColumn<DepositContract, String> colContractNumber;
+    private TableColumn<DepositContract, String> contractNumberColumn;
 
     @FXML
-    private TableColumn<DepositContract, String> colCustomer;
+    private TableColumn<DepositContract, String> customerColumn;
 
     @FXML
-    private TableColumn<DepositContract, String> colProduct;
+    private TableColumn<DepositContract, String> productColumn;
 
     @FXML
-    private TableColumn<DepositContract, String> colOpenDate;
+    private TableColumn<DepositContract, String> openDateColumn;
 
     @FXML
-    private TableColumn<DepositContract, String> colCloseDate;
+    private TableColumn<DepositContract, String> statusColumn;
 
     @FXML
-    private TableColumn<DepositContract, String> colBalance;
+    private TableColumn<DepositContract, String> balanceColumn;
+
+    // Блок "Открытие вклада"
+    @FXML
+    private ComboBox<Customer> customerComboBox;
 
     @FXML
-    private TableColumn<DepositContract, String> colRate;
+    private ComboBox<DepositProduct> productComboBox;
 
     @FXML
-    private TableColumn<DepositContract, String> colStatus;
-
-    // Таблица операций
-    @FXML
-    private TableView<DepositOperation> operationsTable;
-
-    @FXML
-    private TableColumn<DepositOperation, String> colOpDateTime;
-
-    @FXML
-    private TableColumn<DepositOperation, String> colOpType;
-
-    @FXML
-    private TableColumn<DepositOperation, String> colOpAmount;
-
-    @FXML
-    private TableColumn<DepositOperation, String> colOpDescription;
-
-    // Форма открытия нового вклада
-    @FXML
-    private ComboBox<Customer> openCustomerCombo;
-
-    @FXML
-    private ComboBox<DepositProduct> openProductCombo;
+    private DatePicker openDatePicker;
 
     @FXML
     private TextField initialAmountField;
 
     @FXML
-    private DatePicker openDatePicker;
-
-    // Кнопки
-    @FXML
-    private Button refreshButton;
-
-    @FXML
     private Button openContractButton;
+
+    // Блок "Операции"
+    @FXML
+    private TextField operationAmountField;
+
+    @FXML
+    private TextField operationDescriptionField;
 
     @FXML
     private Button depositButton;
@@ -125,396 +97,375 @@ public class ContractsController {
     private Button withdrawButton;
 
     @FXML
-    private Button accrueInterestButton;
-
-    @FXML
     private Button closeContractButton;
 
-    private final ObservableList<DepositContract> contractsData = FXCollections.observableArrayList();
-    private final ObservableList<DepositOperation> operationsData = FXCollections.observableArrayList();
+    private final ObservableList<DepositContract> contracts = FXCollections.observableArrayList();
+    private final ObservableList<Customer> customers = FXCollections.observableArrayList();
+    private final ObservableList<DepositProduct> products = FXCollections.observableArrayList();
 
-    private final DateTimeFormatter dateFormatter = DateTimeFormatter.ofPattern("dd.MM.yyyy");
-    private final DateTimeFormatter dateTimeFormatter = DateTimeFormatter.ofPattern("dd.MM.yyyy HH:mm");
+    /**
+     * Текущий выбранный договор.
+     */
+    private DepositContract selectedContract;
 
     @FXML
     public void initialize() {
-        initializeContractsTable();
-        initializeOperationsTable();
-        initializeCombos();
+        setupTable();
+        setupComboBoxes();
+        loadData();
+        setupSelectionListener();
+        clearOperationFields();
+    }
 
-        contractsTable.setItems(contractsData);
-        operationsTable.setItems(operationsData);
+    private void setupTable() {
+        idColumn.setCellValueFactory(new PropertyValueFactory<>("id"));
+        contractNumberColumn.setCellValueFactory(new PropertyValueFactory<>("contractNumber"));
 
+        customerColumn.setCellValueFactory(cellData -> {
+            DepositContract c = cellData.getValue();
+            Customer cust = c != null ? c.getCustomer() : null;
+            if (cust == null) {
+                return new SimpleStringProperty("");
+            }
+            String text = (cust.getLastName() + " " + cust.getFirstName()).trim();
+            return new SimpleStringProperty(text);
+        });
+
+        productColumn.setCellValueFactory(cellData -> {
+            DepositContract c = cellData.getValue();
+            DepositProduct p = c != null ? c.getProduct() : null;
+            return new SimpleStringProperty(p != null ? p.getName() : "");
+        });
+
+        openDateColumn.setCellValueFactory(cellData -> {
+            DepositContract c = cellData.getValue();
+            LocalDate od = c != null ? c.getOpenDate() : null;
+            return new SimpleStringProperty(od != null ? od.toString() : "");
+        });
+
+        statusColumn.setCellValueFactory(cellData -> {
+            DepositContract c = cellData.getValue();
+            DepositContractStatus st = c != null ? c.getStatus() : null;
+            return new SimpleStringProperty(st != null ? st.name() : "");
+        });
+
+        balanceColumn.setCellValueFactory(cellData -> {
+            DepositContract c = cellData.getValue();
+            BigDecimal bal = c != null ? c.getCurrentBalance() : null;
+            return new SimpleStringProperty(bal != null ? bal.toPlainString() : "0.00");
+        });
+
+        contractsTable.setItems(contracts);
+    }
+
+    private void setupComboBoxes() {
+        // Красивое отображение клиентов
+        StringConverter<Customer> customerConverter = new StringConverter<>() {
+            @Override
+            public String toString(Customer c) {
+                if (c == null) {
+                    return "";
+                }
+                return (c.getLastName() + " " + c.getFirstName()).trim();
+            }
+
+            @Override
+            public Customer fromString(String string) {
+                return null;
+            }
+        };
+
+        customerComboBox.setConverter(customerConverter);
+        customerComboBox.setCellFactory(listView -> new ListCell<>() {
+            @Override
+            protected void updateItem(Customer c, boolean empty) {
+                super.updateItem(c, empty);
+                if (empty || c == null) {
+                    setText(null);
+                } else {
+                    setText(customerConverter.toString(c));
+                }
+            }
+        });
+
+        // Отображение продуктов
+        StringConverter<DepositProduct> productConverter = new StringConverter<>() {
+            @Override
+            public String toString(DepositProduct product) {
+                if (product == null) {
+                    return "";
+                }
+                return product.getName();
+            }
+
+            @Override
+            public DepositProduct fromString(String string) {
+                return null;
+            }
+        };
+
+        productComboBox.setConverter(productConverter);
+        productComboBox.setCellFactory(listView -> new ListCell<>() {
+            @Override
+            protected void updateItem(DepositProduct p, boolean empty) {
+                super.updateItem(p, empty);
+                if (empty || p == null) {
+                    setText(null);
+                } else {
+                    setText(productConverter.toString(p));
+                }
+            }
+        });
+
+        customerComboBox.setItems(customers);
+        productComboBox.setItems(products);
+    }
+
+    private void loadData() {
+        List<Customer> customerList = customerService.getAllCustomers();
+        customers.setAll(customerList);
+
+        List<DepositProduct> productList = depositProductService.getAllProducts();
+        products.setAll(productList);
+
+        List<DepositContract> contractList = depositContractService.getAllContracts();
+        contracts.setAll(contractList);
+
+        if (!contracts.isEmpty()) {
+            contractsTable.getSelectionModel().selectFirst();
+        }
+    }
+
+    private void setupSelectionListener() {
         contractsTable.getSelectionModel().selectedItemProperty().addListener(
-                (obs, oldSelection, newSelection) -> {
-                    if (newSelection != null) {
-                        loadOperationsForContract(newSelection);
-                    } else {
-                        operationsData.clear();
-                    }
+                (obs, oldSel, newSel) -> {
+                    selectedContract = newSel;
+                    updateButtonsState();
                 }
         );
-
-        // Дата открытия по умолчанию — сегодня
-        openDatePicker.setValue(LocalDate.now());
-
-        loadReferenceData();
-        loadContracts();
+        updateButtonsState();
     }
 
-    private void initializeContractsTable() {
-        colId.setCellValueFactory(new PropertyValueFactory<>("id"));
-        colContractNumber.setCellValueFactory(new PropertyValueFactory<>("contractNumber"));
+    private void updateButtonsState() {
+        boolean hasSelection = selectedContract != null;
+        depositButton.setDisable(!hasSelection);
+        withdrawButton.setDisable(!hasSelection);
+        closeContractButton.setDisable(!hasSelection);
 
-        colCustomer.setCellValueFactory(cellData -> {
-            DepositContract contract = cellData.getValue();
-            Customer customer = contract.getCustomer();
-            String value = "";
-            if (customer != null) {
-                value = customer.getLastName() + " " + customer.getFirstName();
-            }
-            return new SimpleStringProperty(value);
-        });
-
-        colProduct.setCellValueFactory(cellData -> {
-            DepositContract contract = cellData.getValue();
-            DepositProduct product = contract.getProduct();
-            String value = product != null ? product.getName() : "";
-            return new SimpleStringProperty(value);
-        });
-
-        colOpenDate.setCellValueFactory(cellData -> {
-            if (cellData.getValue().getOpenDate() == null) {
-                return new SimpleStringProperty("");
-            }
-            return new SimpleStringProperty(cellData.getValue().getOpenDate().format(dateFormatter));
-        });
-
-        colCloseDate.setCellValueFactory(cellData -> {
-            if (cellData.getValue().getCloseDate() == null) {
-                return new SimpleStringProperty("");
-            }
-            return new SimpleStringProperty(cellData.getValue().getCloseDate().format(dateFormatter));
-        });
-
-        colBalance.setCellValueFactory(cellData -> {
-            if (cellData.getValue().getCurrentBalance() == null) {
-                return new SimpleStringProperty("0.00");
-            }
-            return new SimpleStringProperty(cellData.getValue().getCurrentBalance().toPlainString());
-        });
-
-        colRate.setCellValueFactory(cellData -> {
-            if (cellData.getValue().getInterestRate() == null) {
-                return new SimpleStringProperty("");
-            }
-            return new SimpleStringProperty(cellData.getValue().getInterestRate().toPlainString());
-        });
-
-        colStatus.setCellValueFactory(cellData -> {
-            if (cellData.getValue().getStatus() == null) {
-                return new SimpleStringProperty("");
-            }
-            return new SimpleStringProperty(cellData.getValue().getStatus().name());
-        });
-    }
-
-    private void initializeOperationsTable() {
-        colOpDateTime.setCellValueFactory(cellData -> {
-            if (cellData.getValue().getOperationDateTime() == null) {
-                return new SimpleStringProperty("");
-            }
-            return new SimpleStringProperty(cellData.getValue().getOperationDateTime().format(dateTimeFormatter));
-        });
-
-        colOpType.setCellValueFactory(cellData -> {
-            if (cellData.getValue().getType() == null) {
-                return new SimpleStringProperty("");
-            }
-            return new SimpleStringProperty(cellData.getValue().getType().name());
-        });
-
-        colOpAmount.setCellValueFactory(cellData -> {
-            if (cellData.getValue().getAmount() == null) {
-                return new SimpleStringProperty("0.00");
-            }
-            return new SimpleStringProperty(cellData.getValue().getAmount().toPlainString());
-        });
-
-        colOpDescription.setCellValueFactory(new PropertyValueFactory<>("description"));
-    }
-
-    private void initializeCombos() {
-        // Как отображать клиентов в ComboBox
-        openCustomerCombo.setCellFactory(listView -> new javafx.scene.control.ListCell<>() {
-            @Override
-            protected void updateItem(Customer item, boolean empty) {
-                super.updateItem(item, empty);
-                if (empty || item == null) {
-                    setText(null);
-                } else {
-                    setText(item.getLastName() + " " + item.getFirstName());
-                }
-            }
-        });
-        openCustomerCombo.setButtonCell(new javafx.scene.control.ListCell<>() {
-            @Override
-            protected void updateItem(Customer item, boolean empty) {
-                super.updateItem(item, empty);
-                if (empty || item == null) {
-                    setText(null);
-                } else {
-                    setText(item.getLastName() + " " + item.getFirstName());
-                }
-            }
-        });
-
-        // Как отображать продукты
-        openProductCombo.setCellFactory(listView -> new javafx.scene.control.ListCell<>() {
-            @Override
-            protected void updateItem(DepositProduct item, boolean empty) {
-                super.updateItem(item, empty);
-                if (empty || item == null) {
-                    setText(null);
-                } else {
-                    setText(item.getName());
-                }
-            }
-        });
-        openProductCombo.setButtonCell(new javafx.scene.control.ListCell<>() {
-            @Override
-            protected void updateItem(DepositProduct item, boolean empty) {
-                super.updateItem(item, empty);
-                if (empty || item == null) {
-                    setText(null);
-                } else {
-                    setText(item.getName());
-                }
-            }
-        });
-    }
-
-    private void loadReferenceData() {
-        try {
-            List<Customer> customers = customerService.getAllCustomers();
-            openCustomerCombo.getItems().setAll(customers);
-
-            List<DepositProduct> products = depositProductService.getAllProducts();
-            openProductCombo.getItems().setAll(products);
-        } catch (Exception e) {
-            showError("Ошибка загрузки справочников", e.getMessage());
+        if (hasSelection && selectedContract.getStatus() != DepositContractStatus.OPEN) {
+            depositButton.setDisable(true);
+            withdrawButton.setDisable(true);
+            closeContractButton.setDisable(true);
         }
     }
 
-    private void loadContracts() {
-        try {
-            List<DepositContract> contracts = depositContractService.getAllContracts();
-            contractsData.setAll(contracts);
-            operationsData.clear();
-        } catch (Exception e) {
-            showError("Ошибка загрузки вкладов", e.getMessage());
-        }
+    private void clearOperationFields() {
+        operationAmountField.clear();
+        operationDescriptionField.clear();
     }
 
-    private void loadOperationsForContract(DepositContract contract) {
-        try {
-            List<DepositOperation> operations =
-                    depositContractService.getOperationsForContract(contract.getId());
-            operationsData.setAll(operations);
-        } catch (Exception e) {
-            showError("Ошибка загрузки операций", e.getMessage());
-        }
-    }
+    // ----------------------- Обработчики кнопок -----------------------
 
-    @FXML
-    private void onRefresh() {
-        loadReferenceData();
-        loadContracts();
-    }
-
+    /**
+     * Открытие нового вклада.
+     */
     @FXML
     private void onOpenContract() {
-        Customer customer = openCustomerCombo.getValue();
-        DepositProduct product = openProductCombo.getValue();
-        String amountText = initialAmountField.getText();
-        LocalDate openDate = openDatePicker.getValue();
-
-        if (customer == null) {
-            showError("Не выбран клиент", "Выберите клиента для открытия вклада.");
-            return;
-        }
-        if (product == null) {
-            showError("Не выбран продукт", "Выберите депозитный продукт.");
-            return;
-        }
-        if (amountText == null || amountText.isBlank()) {
-            showError("Не указана сумма", "Введите сумму первоначального взноса.");
-            return;
-        }
-
-        BigDecimal amount;
         try {
-            amount = new BigDecimal(amountText.replace(",", "."));
-        } catch (NumberFormatException e) {
-            showError("Неверный формат суммы", "Используйте числовой формат, при необходимости с точкой (например, 10000.50).");
-            return;
-        }
+            Customer customer = customerComboBox.getValue();
+            DepositProduct product = productComboBox.getValue();
+            LocalDate openDate = openDatePicker.getValue();
+            String amountText = initialAmountField.getText();
 
-        try {
-            DepositContract contract =
-                    depositContractService.openContract(customer.getId(), product.getId(), amount, openDate);
-            contractsData.add(contract);
-            contractsTable.getSelectionModel().select(contract);
-            showInfo("Вклад открыт", "Договор № " + contract.getContractNumber() + " успешно создан.");
-        } catch (InvalidOperationException | EntityNotFoundException e) {
-            showError("Ошибка при открытии вклада", e.getMessage());
-        } catch (Exception e) {
-            showError("Неожиданная ошибка при открытии вклада", e.toString());
+            if (customer == null) {
+                showError("Открытие вклада", "Выберите клиента");
+                return;
+            }
+            if (product == null) {
+                showError("Открытие вклада", "Выберите депозитный продукт");
+                return;
+            }
+            if (amountText == null || amountText.isBlank()) {
+                showError("Открытие вклада", "Введите сумму вклада");
+                return;
+            }
+
+            BigDecimal amount;
+            try {
+                amount = new BigDecimal(amountText.trim().replace(',', '.'));
+            } catch (NumberFormatException ex) {
+                showError("Открытие вклада", "Неверный формат суммы");
+                return;
+            }
+
+            if (amount.compareTo(BigDecimal.ZERO) <= 0) {
+                showError("Открытие вклада", "Сумма должна быть больше нуля");
+                return;
+            }
+
+            if (openDate == null) {
+                openDate = LocalDate.now();
+            }
+
+            // Сервисная сигнатура: (customerId, productId, initialAmount, openDate)
+            DepositContract created = depositContractService.openContract(
+                    customer.getId(),
+                    product.getId(),
+                    amount,
+                    openDate
+            );
+
+            reloadAndSelect(created.getId());
+            clearOperationFields();
+            initialAmountField.clear();
+
+            showInfo("Открытие вклада",
+                    "Вклад успешно открыт. Номер договора: " + created.getContractNumber());
+
+        } catch (InvalidOperationException | EntityNotFoundException ex) {
+            showError("Открытие вклада", ex.getMessage());
+        } catch (Exception ex) {
+            showError("Неожиданная ошибка", ex.toString());
         }
     }
 
+    /**
+     * Пополнение вклада.
+     */
     @FXML
     private void onDeposit() {
-        DepositContract contract = getSelectedContractOrShowError();
-        if (contract == null) {
-            return;
-        }
-
-        BigDecimal amount = askAmount("Пополнение вклада", "Введите сумму пополнения:");
-        if (amount == null) {
+        if (selectedContract == null) {
+            showError("Пополнение вклада", "Сначала выберите договор в таблице");
             return;
         }
 
         try {
-            DepositContract updated = depositContractService.deposit(contract.getId(), amount);
-            replaceContractInList(contract, updated);
-            contractsTable.getSelectionModel().select(updated);
-            showInfo("Пополнение выполнено", "Счёт успешно пополнен.");
-        } catch (InvalidOperationException | EntityNotFoundException e) {
-            showError("Ошибка при пополнении", e.getMessage());
-        } catch (Exception e) {
-            showError("Неожиданная ошибка при пополнении", e.toString());
+            BigDecimal amount = parseOperationAmount();
+            if (amount == null) {
+                return;
+            }
+            String description = operationDescriptionField.getText();
+
+            DepositContract updated = depositContractService.deposit(
+                    selectedContract.getId(),
+                    amount,
+                    description
+            );
+
+            reloadAndSelect(updated.getId());
+            clearOperationFields();
+
+        } catch (InvalidOperationException | EntityNotFoundException ex) {
+            showError("Пополнение вклада", ex.getMessage());
+        } catch (Exception ex) {
+            showError("Неожиданная ошибка", ex.toString());
         }
     }
 
+    /**
+     * Снятие средств.
+     */
     @FXML
     private void onWithdraw() {
-        DepositContract contract = getSelectedContractOrShowError();
-        if (contract == null) {
-            return;
-        }
-
-        BigDecimal amount = askAmount("Снятие средств", "Введите сумму для снятия:");
-        if (amount == null) {
+        if (selectedContract == null) {
+            showError("Снятие средств", "Сначала выберите договор в таблице");
             return;
         }
 
         try {
-            DepositContract updated = depositContractService.withdraw(contract.getId(), amount);
-            replaceContractInList(contract, updated);
-            contractsTable.getSelectionModel().select(updated);
-            showInfo("Снятие выполнено", "Сумма успешно списана со счёта.");
-        } catch (InvalidOperationException | EntityNotFoundException e) {
-            showError("Ошибка при снятии средств", e.getMessage());
-        } catch (Exception e) {
-            showError("Неожиданная ошибка при снятии средств", e.toString());
+            BigDecimal amount = parseOperationAmount();
+            if (amount == null) {
+                return;
+            }
+            String description = operationDescriptionField.getText();
+
+            DepositContract updated = depositContractService.withdraw(
+                    selectedContract.getId(),
+                    amount,
+                    description
+            );
+
+            reloadAndSelect(updated.getId());
+            clearOperationFields();
+
+        } catch (InvalidOperationException | EntityNotFoundException ex) {
+            showError("Снятие средств", ex.getMessage());
+        } catch (Exception ex) {
+            showError("Неожиданная ошибка", ex.toString());
         }
     }
 
-    @FXML
-    private void onAccrueInterest() {
-        DepositContract contract = getSelectedContractOrShowError();
-        if (contract == null) {
-            return;
-        }
-
-        BigDecimal amount = askAmount("Начисление процентов",
-                "Введите сумму начисленных процентов (упрощённо):");
-        if (amount == null) {
-            return;
-        }
-
-        try {
-            DepositContract updated = depositContractService.accrueInterest(contract.getId(), amount);
-            replaceContractInList(contract, updated);
-            contractsTable.getSelectionModel().select(updated);
-            showInfo("Проценты начислены", "Проценты успешно начислены на вклад.");
-        } catch (InvalidOperationException | EntityNotFoundException e) {
-            showError("Ошибка при начислении процентов", e.getMessage());
-        } catch (Exception e) {
-            showError("Неожиданная ошибка при начислении процентов", e.toString());
-        }
-    }
-
+    /**
+     * Закрытие вклада.
+     */
     @FXML
     private void onCloseContract() {
-        DepositContract contract = getSelectedContractOrShowError();
-        if (contract == null) {
+        if (selectedContract == null) {
+            showError("Закрытие вклада", "Сначала выберите договор в таблице");
             return;
         }
 
         Alert confirm = new Alert(Alert.AlertType.CONFIRMATION);
-        confirm.setTitle("Подтверждение закрытия вклада");
+        confirm.setTitle("Закрытие вклада");
         confirm.setHeaderText(null);
-        confirm.setContentText("Вы уверены, что хотите закрыть вклад № " + contract.getContractNumber() + "?");
-        Optional<javafx.scene.control.ButtonType> result = confirm.showAndWait();
-        if (result.isEmpty() || result.get() != javafx.scene.control.ButtonType.OK) {
-            return;
-        }
+        confirm.setContentText("Закрыть выбранный вклад?");
 
+        confirm.getButtonTypes().setAll(ButtonType.YES, ButtonType.NO);
+
+        confirm.showAndWait().ifPresent(buttonType -> {
+            if (buttonType == ButtonType.YES) {
+                try {
+                    // Сервисная сигнатура: (contractId, closeDate)
+                    DepositContract updated =
+                            depositContractService.closeContract(selectedContract.getId(), LocalDate.now());
+                    reloadAndSelect(updated.getId());
+                    clearOperationFields();
+                } catch (InvalidOperationException | EntityNotFoundException ex) {
+                    showError("Закрытие вклада", ex.getMessage());
+                } catch (Exception ex) {
+                    showError("Неожиданная ошибка", ex.toString());
+                }
+            }
+        });
+    }
+
+    // ----------------------- Вспомогательные методы -----------------------
+
+    private BigDecimal parseOperationAmount() {
+        String text = operationAmountField.getText();
+        if (text == null || text.isBlank()) {
+            showError("Сумма операции", "Введите сумму операции");
+            return null;
+        }
         try {
-            DepositContract updated = depositContractService.closeContract(contract.getId());
-            replaceContractInList(contract, updated);
-            contractsTable.getSelectionModel().select(updated);
-            showInfo("Вклад закрыт", "Вклад успешно закрыт, средства выплачены клиенту.");
-        } catch (InvalidOperationException | EntityNotFoundException e) {
-            showError("Ошибка при закрытии вклада", e.getMessage());
-        } catch (Exception e) {
-            showError("Неожиданная ошибка при закрытии вклада", e.toString());
+            BigDecimal amount = new BigDecimal(text.trim().replace(',', '.'));
+            if (amount.compareTo(BigDecimal.ZERO) <= 0) {
+                showError("Сумма операции", "Сумма должна быть больше нуля");
+                return null;
+            }
+            return amount;
+        } catch (NumberFormatException ex) {
+            showError("Сумма операции", "Неверный формат суммы");
+            return null;
         }
     }
 
-    private DepositContract getSelectedContractOrShowError() {
-        DepositContract contract = contractsTable.getSelectionModel().getSelectedItem();
-        if (contract == null) {
-            showError("Не выбран вклад", "Выберите вклад в таблице.");
-        }
-        return contract;
-    }
+    private void reloadAndSelect(Long id) {
+        List<DepositContract> list = depositContractService.getAllContracts();
+        contracts.setAll(list);
 
-    private void replaceContractInList(DepositContract oldContract, DepositContract newContract) {
-        int index = contractsData.indexOf(oldContract);
-        if (index >= 0) {
-            contractsData.set(index, newContract);
-        } else {
-            loadContracts();
-        }
-        loadOperationsForContract(newContract);
-    }
-
-    private BigDecimal askAmount(String title, String header) {
-        TextInputDialog dialog = new TextInputDialog();
-        dialog.setTitle(title);
-        dialog.setHeaderText(header);
-        dialog.setContentText("Сумма:");
-
-        Optional<String> result = dialog.showAndWait();
-        if (result.isEmpty()) {
-            return null;
+        if (id != null) {
+            for (DepositContract c : contracts) {
+                if (id.equals(c.getId())) {
+                    contractsTable.getSelectionModel().select(c);
+                    contractsTable.scrollTo(c);
+                    selectedContract = c;
+                    break;
+                }
+            }
         }
 
-        String text = result.get().trim();
-        if (text.isEmpty()) {
-            showError("Не указана сумма", "Сумма не может быть пустой.");
-            return null;
-        }
-
-        try {
-            return new BigDecimal(text.replace(",", "."));
-        } catch (NumberFormatException e) {
-            showError("Неверный формат суммы", "Используйте числовой формат, при необходимости с точкой (например, 10000.50).");
-            return null;
-        }
+        updateButtonsState();
     }
 
     private void showError(String title, String message) {

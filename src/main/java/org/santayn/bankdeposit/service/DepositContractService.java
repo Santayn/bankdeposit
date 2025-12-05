@@ -4,280 +4,317 @@ import lombok.RequiredArgsConstructor;
 import org.santayn.bankdeposit.models.Customer;
 import org.santayn.bankdeposit.models.DepositContract;
 import org.santayn.bankdeposit.models.DepositContractStatus;
-import org.santayn.bankdeposit.models.DepositOperation;
 import org.santayn.bankdeposit.models.DepositOperationType;
 import org.santayn.bankdeposit.models.DepositProduct;
-
 import org.santayn.bankdeposit.repository.CustomerRepository;
 import org.santayn.bankdeposit.repository.DepositContractRepository;
-import org.santayn.bankdeposit.repository.DepositOperationRepository;
 import org.santayn.bankdeposit.repository.DepositProductRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.UUID;
 
 /**
- * Сервис для работы с депозитными договорами и операциями.
+ * Сервис управления договорами вкладов.
  */
 @Service
 @RequiredArgsConstructor
 public class DepositContractService {
 
-    private final CustomerRepository customerRepository;
-    private final DepositProductRepository depositProductRepository;
     private final DepositContractRepository depositContractRepository;
-    private DepositOperationRepository depositOperationRepository;
+    private final DepositProductRepository depositProductRepository;
+    private final CustomerRepository customerRepository;
+    private final DepositOperationService depositOperationService;
 
-    /**
-     * Возвращает все договоры.
-     */
+    @Transactional(readOnly = true)
     public List<DepositContract> getAllContracts() {
         return depositContractRepository.findAll();
     }
 
-    /**
-     * Возвращает договор по идентификатору или выбрасывает исключение.
-     */
-    public DepositContract getContractById(Long id) {
-        return depositContractRepository.findById(id)
-                .orElseThrow(() -> new EntityNotFoundException("Договор вклада с id=" + id + " не найден"));
-    }
-
-    /**
-     * Возвращает список договоров клиента.
-     */
+    @Transactional(readOnly = true)
     public List<DepositContract> getContractsByCustomer(Long customerId) {
-        Customer customer = customerRepository.findById(customerId)
-                .orElseThrow(() -> new EntityNotFoundException("Клиент с id=" + customerId + " не найден"));
-        return depositContractRepository.findByCustomer(customer);
+        if (customerId == null) {
+            throw new InvalidOperationException("Не указан клиент");
+        }
+        return depositContractRepository.findByCustomerId(customerId);
+    }
+
+    @Transactional(readOnly = true)
+    public List<DepositContract> getActiveContracts() {
+        return depositContractRepository.findByStatus(DepositContractStatus.OPEN);
+    }
+
+    @Transactional(readOnly = true)
+    public DepositContract getContractById(Long id) {
+        if (id == null) {
+            throw new InvalidOperationException("Не указан идентификатор договора");
+        }
+        return depositContractRepository.findById(id)
+                .orElseThrow(() -> new EntityNotFoundException("Договор с id=" + id + " не найден"));
     }
 
     /**
-     * Открывает новый вклад (создаёт договор и операцию OPENING).
-     *
-     * @param customerId    идентификатор клиента
-     * @param productId     идентификатор депозитного продукта
-     * @param initialAmount сумма первоначального взноса
-     * @param openDate      дата открытия вклада (если null, берётся текущая дата)
-     * @return созданный договор
+     * Открытие нового вклада.
      */
     @Transactional
-    public DepositContract openContract(Long customerId,
-                                        Long productId,
-                                        BigDecimal initialAmount,
-                                        LocalDate openDate) {
-
-        if (initialAmount == null || initialAmount.compareTo(BigDecimal.ZERO) <= 0) {
-            throw new InvalidOperationException("Сумма первоначального взноса должна быть положительной");
+    public DepositContract openContract(
+            Long customerId,
+            Long productId,
+            BigDecimal initialAmount,
+            LocalDate openDate
+    ) {
+        if (customerId == null) {
+            throw new InvalidOperationException("Не указан клиент");
         }
-
-        if (openDate == null) {
-            openDate = LocalDate.now();
+        if (productId == null) {
+            throw new InvalidOperationException("Не указан депозитный продукт");
+        }
+        if (initialAmount == null || initialAmount.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new InvalidOperationException("Начальная сумма должна быть больше нуля");
         }
 
         Customer customer = customerRepository.findById(customerId)
                 .orElseThrow(() -> new EntityNotFoundException("Клиент с id=" + customerId + " не найден"));
 
         DepositProduct product = depositProductRepository.findById(productId)
-                .orElseThrow(() -> new EntityNotFoundException("Депозитный продукт с id=" + productId + " не найден"));
+                .orElseThrow(() -> new EntityNotFoundException("Продукт с id=" + productId + " не найден"));
 
-        if (product.getMinAmount() != null && initialAmount.compareTo(product.getMinAmount()) < 0) {
-            throw new InvalidOperationException("Сумма меньше минимальной для данного продукта");
-        }
-        if (product.getMaxAmount() != null && initialAmount.compareTo(product.getMaxAmount()) > 0) {
-            throw new InvalidOperationException("Сумма больше максимальной для данного продукта");
-        }
+        validateAmountAgainstProduct(initialAmount, product);
 
-        String contractNumber = generateContractNumber();
+        DepositContract contract = new DepositContract();
+        contract.setCustomer(customer);
+        contract.setProduct(product);
 
-        DepositContract contract = DepositContract.builder()
-                .contractNumber(contractNumber)
-                .customer(customer)
-                .product(product)
-                .openDate(openDate)
-                .closeDate(null)
-                .initialAmount(initialAmount)
-                .currentBalance(initialAmount)
-                .interestRate(product.getBaseInterestRate())
-                .status(DepositContractStatus.OPEN)
-                .build();
+        contract.setOpenDate(openDate != null ? openDate : LocalDate.now());
+        contract.setStatus(DepositContractStatus.OPEN);
 
-        contract = depositContractRepository.save(contract);
+        contract.setInitialAmount(normalizeMoney(initialAmount));
+        contract.setCurrentBalance(normalizeMoney(initialAmount));
 
-        DepositOperation openingOperation = DepositOperation.builder()
-                .contract(contract)
-                .operationDateTime(LocalDateTime.now())
-                .type(DepositOperationType.OPENING)
-                .amount(initialAmount)
-                .description("Открытие вклада")
-                .build();
+        BigDecimal rate = product.getBaseInterestRate() != null
+                ? product.getBaseInterestRate()
+                : BigDecimal.ZERO;
+        contract.setInterestRate(rate);
 
-        depositOperationRepository.save(openingOperation);
+        contract.setContractNumber(generateContractNumber());
 
-        return contract;
+        DepositContract saved = depositContractRepository.save(contract);
+
+        depositOperationService.createOperation(
+                saved,
+                DepositOperationType.OPENING,
+                normalizeMoney(initialAmount),
+                "Открытие вклада",
+                LocalDateTime.now()
+        );
+
+        return saved;
     }
 
     /**
      * Пополнение вклада.
      */
     @Transactional
-    public DepositContract deposit(Long contractId, BigDecimal amount) {
-        if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
-            throw new InvalidOperationException("Сумма пополнения должна быть положительной");
-        }
-
+    public DepositContract deposit(
+            Long contractId,
+            BigDecimal amount,
+            String description
+    ) {
         DepositContract contract = getContractById(contractId);
 
-        if (contract.getStatus() != DepositContractStatus.OPEN) {
-            throw new InvalidOperationException("Пополнение возможно только для открытых вкладов");
-        }
+        ensureOpen(contract);
 
         DepositProduct product = contract.getProduct();
-        if (Boolean.FALSE.equals(product.getAllowReplenishment())) {
-            throw new InvalidOperationException("Для данного продукта пополнение не разрешено");
+        if (product != null && Boolean.FALSE.equals(product.getAllowReplenishment())) {
+            throw new InvalidOperationException("Данный продукт не допускает пополнение");
         }
 
-        BigDecimal newBalance = contract.getCurrentBalance().add(amount);
+        if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new InvalidOperationException("Сумма пополнения должна быть больше нуля");
+        }
+
+        BigDecimal newBalance = normalizeMoney(contract.getCurrentBalance()).add(normalizeMoney(amount));
+
+        if (product != null && product.getMaxAmount() != null) {
+            if (newBalance.compareTo(product.getMaxAmount()) > 0) {
+                throw new InvalidOperationException("Превышен максимальный лимит суммы по продукту");
+            }
+        }
+
         contract.setCurrentBalance(newBalance);
-        contract = depositContractRepository.save(contract);
 
-        DepositOperation operation = DepositOperation.builder()
-                .contract(contract)
-                .operationDateTime(LocalDateTime.now())
-                .type(DepositOperationType.DEPOSIT)
-                .amount(amount)
-                .description("Пополнение вклада")
-                .build();
+        DepositContract saved = depositContractRepository.save(contract);
 
-        depositOperationRepository.save(operation);
+        depositOperationService.createOperation(
+                saved,
+                DepositOperationType.DEPOSIT,
+                normalizeMoney(amount),
+                description != null && !description.isBlank() ? description.trim() : "Пополнение вклада",
+                LocalDateTime.now()
+        );
 
-        return contract;
+        return saved;
     }
 
     /**
-     * Снятие средств с вклада.
+     * Снятие средств.
      */
     @Transactional
-    public DepositContract withdraw(Long contractId, BigDecimal amount) {
-        if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
-            throw new InvalidOperationException("Сумма снятия должна быть положительной");
-        }
-
+    public DepositContract withdraw(
+            Long contractId,
+            BigDecimal amount,
+            String description
+    ) {
         DepositContract contract = getContractById(contractId);
 
-        if (contract.getStatus() != DepositContractStatus.OPEN) {
-            throw new InvalidOperationException("Снятие возможно только для открытых вкладов");
-        }
+        ensureOpen(contract);
 
         DepositProduct product = contract.getProduct();
-        if (Boolean.FALSE.equals(product.getAllowPartialWithdrawal())) {
-            throw new InvalidOperationException("Для данного продукта частичное снятие не разрешено");
+        if (product != null && Boolean.FALSE.equals(product.getAllowPartialWithdrawal())) {
+            throw new InvalidOperationException("Данный продукт не допускает частичное снятие");
         }
 
-        if (contract.getCurrentBalance().compareTo(amount) < 0) {
-            throw new InvalidOperationException("Недостаточно средств на вкладе");
+        if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new InvalidOperationException("Сумма снятия должна быть больше нуля");
         }
 
-        BigDecimal newBalance = contract.getCurrentBalance().subtract(amount);
+        BigDecimal current = normalizeMoney(contract.getCurrentBalance());
+        BigDecimal normalizedAmount = normalizeMoney(amount);
+
+        if (current.compareTo(normalizedAmount) < 0) {
+            throw new InvalidOperationException("Недостаточно средств для снятия");
+        }
+
+        BigDecimal newBalance = current.subtract(normalizedAmount);
+
+        if (product != null && product.getMinAmount() != null) {
+            if (newBalance.compareTo(product.getMinAmount()) < 0) {
+                throw new InvalidOperationException("После снятия остаток будет меньше минимальной суммы по продукту");
+            }
+        }
+
         contract.setCurrentBalance(newBalance);
-        contract = depositContractRepository.save(contract);
 
-        DepositOperation operation = DepositOperation.builder()
-                .contract(contract)
-                .operationDateTime(LocalDateTime.now())
-                .type(DepositOperationType.WITHDRAWAL)
-                .amount(amount)
-                .description("Снятие средств с вклада")
-                .build();
+        DepositContract saved = depositContractRepository.save(contract);
 
-        depositOperationRepository.save(operation);
+        depositOperationService.createOperation(
+                saved,
+                DepositOperationType.WITHDRAWAL,
+                normalizedAmount,
+                description != null && !description.isBlank() ? description.trim() : "Снятие средств",
+                LocalDateTime.now()
+        );
 
-        return contract;
+        return saved;
     }
 
     /**
-     * Начисление процентов по вкладу.
-     * Здесь пока упрощённо: просто увеличиваем текущий баланс на указанную сумму.
+     * Ручное начисление процентов (если пользователь вводит сумму).
      */
     @Transactional
-    public DepositContract accrueInterest(Long contractId, BigDecimal interestAmount) {
-        if (interestAmount == null || interestAmount.compareTo(BigDecimal.ZERO) <= 0) {
-            throw new InvalidOperationException("Сумма начисленных процентов должна быть положительной");
-        }
-
+    public DepositContract accrueInterestManual(
+            Long contractId,
+            BigDecimal amount,
+            String description,
+            LocalDateTime dateTime
+    ) {
         DepositContract contract = getContractById(contractId);
 
-        if (contract.getStatus() != DepositContractStatus.OPEN) {
-            throw new InvalidOperationException("Начисление процентов возможно только для открытых вкладов");
+        ensureOpen(contract);
+
+        if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new InvalidOperationException("Сумма процентов должна быть больше нуля");
         }
 
-        BigDecimal newBalance = contract.getCurrentBalance().add(interestAmount);
-        contract.setCurrentBalance(newBalance);
-        contract = depositContractRepository.save(contract);
+        BigDecimal normalized = normalizeMoney(amount);
 
-        DepositOperation operation = DepositOperation.builder()
-                .contract(contract)
-                .operationDateTime(LocalDateTime.now())
-                .type(DepositOperationType.INTEREST_ACCRUAL)
-                .amount(interestAmount)
-                .description("Начисление процентов")
-                .build();
+        contract.setCurrentBalance(normalizeMoney(contract.getCurrentBalance()).add(normalized));
+        DepositContract saved = depositContractRepository.save(contract);
 
-        depositOperationRepository.save(operation);
+        depositOperationService.createOperation(
+                saved,
+                DepositOperationType.INTEREST_ACCRUAL,
+                normalized,
+                description != null && !description.isBlank() ? description.trim() : "Начисление процентов",
+                dateTime != null ? dateTime : LocalDateTime.now()
+        );
 
-        return contract;
+        return saved;
     }
 
     /**
      * Закрытие вклада.
-     * Фиксируем операцию CLOSING, обнуляем баланс и проставляем дату закрытия.
      */
     @Transactional
-    public DepositContract closeContract(Long contractId) {
+    public DepositContract closeContract(Long contractId, LocalDate closeDate) {
         DepositContract contract = getContractById(contractId);
 
-        if (contract.getStatus() != DepositContractStatus.OPEN) {
-            throw new InvalidOperationException("Закрыть можно только открытый вклад");
-        }
-
-        BigDecimal payoutAmount = contract.getCurrentBalance();
+        ensureOpen(contract);
 
         contract.setStatus(DepositContractStatus.CLOSED);
-        contract.setCloseDate(LocalDate.now());
-        contract.setCurrentBalance(BigDecimal.ZERO);
-        contract = depositContractRepository.save(contract);
+        contract.setCloseDate(closeDate != null ? closeDate : LocalDate.now());
 
-        DepositOperation closingOperation = DepositOperation.builder()
-                .contract(contract)
-                .operationDateTime(LocalDateTime.now())
-                .type(DepositOperationType.CLOSING)
-                .amount(payoutAmount)
-                .description("Закрытие вклада и выплата средств клиенту")
-                .build();
+        DepositContract saved = depositContractRepository.save(contract);
 
-        depositOperationRepository.save(closingOperation);
+        BigDecimal остаток = normalizeMoney(saved.getCurrentBalance());
 
-        return contract;
+        if (остаток.compareTo(BigDecimal.ZERO) > 0) {
+            // фиксируем закрытие как отдельную операцию "CLOSING" на сумму остатка
+            depositOperationService.createOperation(
+                    saved,
+                    DepositOperationType.CLOSING,
+                    остаток,
+                    "Закрытие вклада",
+                    LocalDateTime.now()
+            );
+        } else {
+            depositOperationService.createOperation(
+                    saved,
+                    DepositOperationType.CLOSING,
+                    BigDecimal.ONE,
+                    "Закрытие вклада (остаток 0)",
+                    LocalDateTime.now()
+            );
+        }
+
+        return saved;
     }
 
-    /**
-     * Список операций по договору.
-     */
-    public List<DepositOperation> getOperationsForContract(Long contractId) {
-        DepositContract contract = getContractById(contractId);
-        return depositOperationRepository.findByContractOrderByOperationDateTimeAsc(contract);
+    // -------------------- Валидации и утилиты --------------------
+
+    private void ensureOpen(DepositContract contract) {
+        if (contract.getStatus() != DepositContractStatus.OPEN) {
+            throw new InvalidOperationException("Операция недоступна. Договор не открыт");
+        }
     }
 
-    /**
-     * Простая генерация номера договора.
-     * Для учебного проекта достаточно такого варианта.
-     */
+    private void validateAmountAgainstProduct(BigDecimal amount, DepositProduct product) {
+        BigDecimal normalized = normalizeMoney(amount);
+
+        if (product.getMinAmount() != null && normalized.compareTo(product.getMinAmount()) < 0) {
+            throw new InvalidOperationException("Сумма меньше минимальной по продукту");
+        }
+
+        if (product.getMaxAmount() != null && normalized.compareTo(product.getMaxAmount()) > 0) {
+            throw new InvalidOperationException("Сумма больше максимальной по продукту");
+        }
+    }
+
+    private BigDecimal normalizeMoney(BigDecimal v) {
+        if (v == null) {
+            return BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
+        }
+        return v.setScale(2, RoundingMode.HALF_UP);
+    }
+
     private String generateContractNumber() {
-        long count = depositContractRepository.count() + 1;
-        return String.format("D-%06d", count);
+        // Простой генератор номера договора для учебного проекта
+        String uid = UUID.randomUUID().toString().replace("-", "").substring(0, 10).toUpperCase();
+        return "DC-" + uid;
     }
 }

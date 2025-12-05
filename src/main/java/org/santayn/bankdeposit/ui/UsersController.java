@@ -1,15 +1,11 @@
 package org.santayn.bankdeposit.ui;
 
+import javafx.beans.property.SimpleBooleanProperty;
+import javafx.beans.property.SimpleStringProperty;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.fxml.FXML;
-import javafx.scene.control.Alert;
-import javafx.scene.control.Button;
-import javafx.scene.control.CheckBox;
-import javafx.scene.control.ComboBox;
-import javafx.scene.control.TableColumn;
-import javafx.scene.control.TableView;
-import javafx.scene.control.TextField;
+import javafx.scene.control.*;
 import javafx.scene.control.cell.PropertyValueFactory;
 import lombok.RequiredArgsConstructor;
 import org.santayn.bankdeposit.models.User;
@@ -20,13 +16,11 @@ import org.santayn.bankdeposit.service.SessionContext;
 import org.santayn.bankdeposit.service.UserService;
 import org.springframework.stereotype.Component;
 
-import java.util.Arrays;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * Контроллер вкладки "Пользователи".
- * Доступен только пользователю с ролью ADMIN.
- * Позволяет добавлять, изменять и удалять пользователей.
  */
 @Component
 @RequiredArgsConstructor
@@ -35,223 +29,323 @@ public class UsersController {
     private final UserService userService;
     private final SessionContext sessionContext;
 
+    // Поиск
+    @FXML
+    private TextField usernameSearchField;
+
+    @FXML
+    private Button findButton;
+
+    @FXML
+    private Button resetSearchButton;
+
+    @FXML
+    private Button refreshButton;
+
+    // Таблица
     @FXML
     private TableView<User> usersTable;
 
     @FXML
-    private TableColumn<User, Long> colId;
+    private TableColumn<User, Long> idColumn;
 
     @FXML
-    private TableColumn<User, String> colUsername;
+    private TableColumn<User, String> usernameColumn;
 
     @FXML
-    private TableColumn<User, String> colFullName;
+    private TableColumn<User, String> fullNameColumn;
 
     @FXML
-    private TableColumn<User, UserRole> colRole;
+    private TableColumn<User, String> roleColumn;
 
     @FXML
-    private TableColumn<User, Boolean> colActive;
+    private TableColumn<User, Boolean> activeColumn;
 
+    // Форма
     @FXML
     private TextField usernameField;
+
+    @FXML
+    private PasswordField passwordField;
 
     @FXML
     private TextField fullNameField;
 
     @FXML
-    private TextField passwordField;
-
-    @FXML
-    private ComboBox<UserRole> roleCombo;
+    private ComboBox<UserRole> roleComboBox;
 
     @FXML
     private CheckBox activeCheckBox;
 
     @FXML
-    private Button addButton;
+    private Label hintLabel;
 
     @FXML
-    private Button updateButton;
+    private Button newButton;
+
+    @FXML
+    private Button saveButton;
 
     @FXML
     private Button deleteButton;
 
-    private final ObservableList<User> usersData = FXCollections.observableArrayList();
+    @FXML
+    private Button clearButton;
+
+    private final ObservableList<User> users = FXCollections.observableArrayList();
+
+    private User selectedUser;
 
     @FXML
     public void initialize() {
-        configureTable();
-        configureRoleCombo();
-        usersTable.setItems(usersData);
+        setupTable();
+        setupRoles();
+        loadAllUsers();
+        setupSelectionListener();
+        resetFormToDefault();
+    }
 
-        usersTable.getSelectionModel().selectedItemProperty().addListener(
-                (obs, oldSelection, newSelection) -> {
-                    if (newSelection != null) {
-                        fillForm(newSelection);
-                    }
+    private void setupTable() {
+        idColumn.setCellValueFactory(new PropertyValueFactory<>("id"));
+        usernameColumn.setCellValueFactory(new PropertyValueFactory<>("username"));
+
+        fullNameColumn.setCellValueFactory(cell -> {
+            User u = cell.getValue();
+            return new SimpleStringProperty(u != null && u.getFullName() != null ? u.getFullName() : "");
+        });
+
+        roleColumn.setCellValueFactory(cell -> {
+            User u = cell.getValue();
+            return new SimpleStringProperty(u != null && u.getRole() != null ? u.getRole().name() : "");
+        });
+
+        activeColumn.setCellValueFactory(cell -> {
+            User u = cell.getValue();
+            boolean active = u != null && Boolean.TRUE.equals(u.getActive());
+            return new SimpleBooleanProperty(active);
+        });
+
+        activeColumn.setCellFactory(col -> new TableCell<>() {
+            @Override
+            protected void updateItem(Boolean item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty) {
+                    setText(null);
+                } else {
+                    setText(Boolean.TRUE.equals(item) ? "Да" : "Нет");
                 }
-        );
+            }
+        });
 
-        loadUsers();
-        applyRoleRestrictions();
+        usersTable.setItems(users);
     }
 
-    private void configureTable() {
-        colId.setCellValueFactory(new PropertyValueFactory<>("id"));
-        colUsername.setCellValueFactory(new PropertyValueFactory<>("username"));
-        colFullName.setCellValueFactory(new PropertyValueFactory<>("fullName"));
-        colRole.setCellValueFactory(new PropertyValueFactory<>("role"));
-        colActive.setCellValueFactory(new PropertyValueFactory<>("active"));
+    private void setupRoles() {
+        roleComboBox.getItems().setAll(UserRole.values());
+        roleComboBox.getSelectionModel().select(UserRole.OPERATOR);
     }
 
-    private void configureRoleCombo() {
-        roleCombo.getItems().setAll(Arrays.asList(UserRole.values()));
-    }
+    private void setupSelectionListener() {
+        usersTable.getSelectionModel().selectedItemProperty().addListener((obs, oldSel, newSel) -> {
+            selectedUser = newSel;
+            fillFormFromSelection();
+            updateButtonsState();
+        });
 
-    private void loadUsers() {
-        try {
-            List<User> users = userService.getAllUsers();
-            usersData.setAll(users);
-        } catch (Exception e) {
-            showError("Ошибка загрузки пользователей", e.getMessage());
+        if (!users.isEmpty()) {
+            usersTable.getSelectionModel().selectFirst();
         }
+        updateButtonsState();
     }
 
-    private void applyRoleRestrictions() {
-        User currentUser = sessionContext.getCurrentUser();
-        if (currentUser == null) {
-            return;
-        }
+    private void updateButtonsState() {
+        boolean hasSelection = selectedUser != null;
 
-        // На всякий случай: если вдруг не ADMIN — выключим кнопки
-        if (currentUser.getRole() != UserRole.ADMIN) {
-            addButton.setDisable(true);
-            updateButton.setDisable(true);
+        deleteButton.setDisable(!hasSelection);
+
+        // Нельзя удалять admin
+        if (hasSelection && selectedUser.getRole() == UserRole.ADMIN) {
             deleteButton.setDisable(true);
-            usernameField.setDisable(true);
-            fullNameField.setDisable(true);
-            passwordField.setDisable(true);
-            roleCombo.setDisable(true);
-            activeCheckBox.setDisable(true);
         }
     }
 
-    @FXML
-    private void onAddUser() {
-        try {
-            User user = buildUserFromForm(null);
-            User saved = userService.createUser(user);
-            usersData.add(saved);
-            usersTable.getSelectionModel().select(saved);
-            showInfo("Пользователь создан", "Пользователь успешно добавлен.");
-        } catch (InvalidOperationException | EntityNotFoundException e) {
-            showError("Ошибка при создании пользователя", e.getMessage());
-        } catch (Exception e) {
-            showError("Неожиданная ошибка при создании пользователя", e.toString());
-        }
+    private void loadAllUsers() {
+        List<User> list = userService.getAllUsers();
+        users.setAll(list);
     }
 
-    @FXML
-    private void onUpdateUser() {
-        User selected = usersTable.getSelectionModel().getSelectedItem();
-        if (selected == null) {
-            showError("Не выбран пользователь", "Выберите пользователя в таблице.");
+    private void fillFormFromSelection() {
+        if (selectedUser == null) {
+            resetFormToDefault();
             return;
         }
 
+        usernameField.setText(selectedUser.getUsername() != null ? selectedUser.getUsername() : "");
+        passwordField.setText(selectedUser.getPassword() != null ? selectedUser.getPassword() : "");
+        fullNameField.setText(selectedUser.getFullName() != null ? selectedUser.getFullName() : "");
+        roleComboBox.getSelectionModel().select(selectedUser.getRole() != null ? selectedUser.getRole() : UserRole.OPERATOR);
+        activeCheckBox.setSelected(Boolean.TRUE.equals(selectedUser.getActive()));
+
+        hintLabel.setText("Редактирование существующего пользователя (ID=" + selectedUser.getId() + ").");
+    }
+
+    private void resetFormToDefault() {
+        usernameField.clear();
+        passwordField.clear();
+        fullNameField.clear();
+        roleComboBox.getSelectionModel().select(UserRole.OPERATOR);
+        activeCheckBox.setSelected(true);
+
+        hintLabel.setText("Новый пользователь будет создан при сохранении без выбранной строки.");
+    }
+
+    private User buildUserFromForm() {
+        User u = new User();
+        u.setUsername(usernameField.getText());
+        u.setPassword(passwordField.getText());
+        u.setFullName(fullNameField.getText());
+        u.setRole(roleComboBox.getValue());
+        u.setActive(activeCheckBox.isSelected());
+        return u;
+    }
+
+    private void reloadAndSelect(Long id) {
+        loadAllUsers();
+
+        if (id == null) {
+            usersTable.getSelectionModel().clearSelection();
+            selectedUser = null;
+            updateButtonsState();
+            return;
+        }
+
+        for (User u : users) {
+            if (id.equals(u.getId())) {
+                usersTable.getSelectionModel().select(u);
+                usersTable.scrollTo(u);
+                selectedUser = u;
+                break;
+            }
+        }
+        updateButtonsState();
+    }
+
+    // -------------------- Actions --------------------
+
+    @FXML
+    private void onRefresh() {
+        loadAllUsers();
+        updateButtonsState();
+    }
+
+    @FXML
+    private void onFindByUsername() {
+        String query = usernameSearchField.getText();
+        if (query == null || query.isBlank()) {
+            showInfo("Поиск", "Введите логин для поиска.");
+            return;
+        }
+
+        Optional<User> found = userService.findByUsername(query.trim());
+
+        if (found.isEmpty()) {
+            showInfo("Поиск", "Пользователь не найден.");
+            return;
+        }
+
+        User u = found.get();
+
+        loadAllUsers();
+        reloadAndSelect(u.getId());
+    }
+
+    @FXML
+    private void onResetSearch() {
+        usernameSearchField.clear();
+        loadAllUsers();
+        if (!users.isEmpty()) {
+            usersTable.getSelectionModel().selectFirst();
+        }
+    }
+
+    @FXML
+    private void onNewUser() {
+        usersTable.getSelectionModel().clearSelection();
+        selectedUser = null;
+        resetFormToDefault();
+        updateButtonsState();
+    }
+
+    @FXML
+    private void onClearForm() {
+        resetFormToDefault();
+    }
+
+    @FXML
+    private void onSaveUser() {
         try {
-            User updatedData = buildUserFromForm(selected.getId());
+            User formUser = buildUserFromForm();
 
-            // Если пароль в форме пустой, оставляем старый пароль
-            if (updatedData.getPassword() == null || updatedData.getPassword().isBlank()) {
-                updatedData.setPassword(selected.getPassword());
-            }
+            User saved;
 
-            User saved = userService.updateUser(selected.getId(), updatedData);
-
-            int index = usersData.indexOf(selected);
-            if (index >= 0) {
-                usersData.set(index, saved);
+            if (selectedUser == null) {
+                saved = userService.createUserValidated(formUser);
+                showInfo("Пользователи", "Пользователь создан: " + saved.getUsername());
             } else {
-                loadUsers();
+                saved = userService.updateUserValidated(selectedUser.getId(), formUser, sessionContext.getCurrentUser());
+                showInfo("Пользователи", "Пользователь обновлён: " + saved.getUsername());
             }
 
-            usersTable.getSelectionModel().select(saved);
-            showInfo("Пользователь обновлён", "Изменения успешно сохранены.");
-        } catch (InvalidOperationException | EntityNotFoundException e) {
-            showError("Ошибка при обновлении пользователя", e.getMessage());
-        } catch (Exception e) {
-            showError("Неожиданная ошибка при обновлении пользователя", e.toString());
+            reloadAndSelect(saved.getId());
+
+        } catch (InvalidOperationException | EntityNotFoundException ex) {
+            showError("Сохранение пользователя", ex.getMessage());
+        } catch (Exception ex) {
+            showError("Неожиданная ошибка", ex.toString());
         }
     }
 
     @FXML
     private void onDeleteUser() {
-        User selected = usersTable.getSelectionModel().getSelectedItem();
-        if (selected == null) {
-            showError("Не выбран пользователь", "Выберите пользователя для удаления.");
+        if (selectedUser == null) {
+            showInfo("Удаление", "Сначала выберите пользователя.");
             return;
         }
 
-        User currentUser = sessionContext.getCurrentUser();
-        if (currentUser != null && selected.getId().equals(currentUser.getId())) {
-            showError("Нельзя удалить текущего пользователя", "Вы не можете удалить учётную запись, под которой вошли.");
+        if (selectedUser.getRole() == UserRole.ADMIN) {
+            showError("Удаление", "Пользователя с ролью ADMIN удалять нельзя.");
             return;
         }
 
-        try {
-            userService.deleteUser(selected.getId());
-            usersData.remove(selected);
-            clearForm();
-            showInfo("Пользователь удалён", "Пользователь успешно удалён.");
-        } catch (EntityNotFoundException e) {
-            showError("Ошибка при удалении пользователя", e.getMessage());
-        } catch (Exception e) {
-            showError("Неожиданная ошибка при удалении пользователя", e.toString());
-        }
-    }
-
-    private User buildUserFromForm(Long id) {
-        String username = usernameField.getText();
-        String fullName = fullNameField.getText();
-        String password = passwordField.getText();
-        UserRole role = roleCombo.getValue();
-        boolean active = activeCheckBox.isSelected();
-
-        if (username == null || username.isBlank()) {
-            throw new InvalidOperationException("Имя пользователя обязательно для заполнения");
-        }
-        if (role == null) {
-            throw new InvalidOperationException("Необходимо выбрать роль пользователя");
+        User current = sessionContext.getCurrentUser();
+        if (current != null && current.getId() != null && current.getId().equals(selectedUser.getId())) {
+            showError("Удаление", "Нельзя удалить самого себя.");
+            return;
         }
 
-        return User.builder()
-                .id(id)
-                .username(username.trim())
-                .fullName(fullName == null || fullName.isBlank() ? null : fullName.trim())
-                .password(password == null ? null : password.trim())
-                .role(role)
-                .active(active)
-                .build();
+        Alert confirm = new Alert(Alert.AlertType.CONFIRMATION);
+        confirm.setTitle("Удаление пользователя");
+        confirm.setHeaderText(null);
+        confirm.setContentText("Удалить пользователя " + selectedUser.getUsername() + "?");
+
+        confirm.getButtonTypes().setAll(ButtonType.YES, ButtonType.NO);
+
+        confirm.showAndWait().ifPresent(bt -> {
+            if (bt == ButtonType.YES) {
+                try {
+                    userService.deleteUserValidated(selectedUser.getId(), sessionContext.getCurrentUser());
+                    reloadAndSelect(null);
+                    resetFormToDefault();
+                } catch (InvalidOperationException | EntityNotFoundException ex) {
+                    showError("Удаление пользователя", ex.getMessage());
+                } catch (Exception ex) {
+                    showError("Неожиданная ошибка", ex.toString());
+                }
+            }
+        });
     }
 
-    private void fillForm(User user) {
-        usernameField.setText(user.getUsername());
-        fullNameField.setText(user.getFullName());
-        passwordField.clear();
-        roleCombo.setValue(user.getRole());
-        activeCheckBox.setSelected(Boolean.TRUE.equals(user.getActive()));
-    }
-
-    private void clearForm() {
-        usernameField.clear();
-        fullNameField.clear();
-        passwordField.clear();
-        roleCombo.setValue(null);
-        activeCheckBox.setSelected(true);
-        usersTable.getSelectionModel().clearSelection();
-    }
+    // -------------------- Alerts --------------------
 
     private void showError(String title, String message) {
         Alert alert = new Alert(Alert.AlertType.ERROR);

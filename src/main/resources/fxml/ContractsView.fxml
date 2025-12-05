@@ -8,118 +8,101 @@
             xmlns:fx="http://javafx.com/fxml"
             fx:controller="org.santayn.bankdeposit.ui.ContractsController">
 
-    <!-- Верхняя панель: кнопка обновления -->
-    <top>
-        <HBox spacing="10.0" padding="10.0">
-            <children>
-                <Button fx:id="refreshButton"
-                        text="Обновить данные"
-                        onAction="#onRefresh"/>
-            </children>
-        </HBox>
-    </top>
-
-    <!-- Центр: таблица вкладов -->
     <center>
-        <TableView fx:id="contractsTable" prefHeight="350.0">
-            <columns>
-                <TableColumn fx:id="colId" text="ID" prefWidth="60.0"/>
-                <TableColumn fx:id="colContractNumber" text="№ договора" prefWidth="120.0"/>
-                <TableColumn fx:id="colCustomer" text="Клиент" prefWidth="180.0"/>
-                <TableColumn fx:id="colProduct" text="Продукт" prefWidth="180.0"/>
-                <TableColumn fx:id="colOpenDate" text="Открыт" prefWidth="90.0"/>
-                <TableColumn fx:id="colCloseDate" text="Закрыт" prefWidth="90.0"/>
-                <TableColumn fx:id="colBalance" text="Баланс" prefWidth="100.0"/>
-                <TableColumn fx:id="colRate" text="% годовых" prefWidth="90.0"/>
-                <TableColumn fx:id="colStatus" text="Статус" prefWidth="90.0"/>
-            </columns>
-        </TableView>
-    </center>
+        <VBox spacing="10.0">
+            <padding>
+                <Insets top="10.0" right="10.0" bottom="10.0" left="10.0"/>
+            </padding>
 
-    <!-- Низ: открытие вклада + операции -->
-    <bottom>
-        <VBox spacing="10.0" padding="10.0">
+            <Label text="Договоры вкладов"
+                   style="-fx-font-size: 18px; -fx-font-weight: bold;"/>
 
-            <!-- Блок открытия нового вклада -->
-            <TitledPane text="Открытие нового вклада" expanded="true">
+            <!-- Таблица договоров -->
+            <TableView fx:id="contractsTable" prefHeight="260.0">
+                <columns>
+                    <TableColumn fx:id="idColumn" text="ID" prefWidth="50.0"/>
+                    <TableColumn fx:id="contractNumberColumn" text="Номер" prefWidth="110.0"/>
+                    <TableColumn fx:id="customerColumn" text="Клиент" prefWidth="180.0"/>
+                    <TableColumn fx:id="productColumn" text="Продукт" prefWidth="180.0"/>
+                    <TableColumn fx:id="openDateColumn" text="Открыт" prefWidth="90.0"/>
+                    <TableColumn fx:id="statusColumn" text="Статус" prefWidth="80.0"/>
+                    <TableColumn fx:id="balanceColumn" text="Баланс" prefWidth="100.0"/>
+                </columns>
+            </TableView>
+
+            <!-- Блок открытия вклада -->
+            <TitledPane text="Открытие вклада" expanded="true">
                 <content>
-                    <GridPane hgap="10.0" vgap="10.0" padding="10.0">
+                    <GridPane hgap="10.0" vgap="8.0">
+                        <padding>
+                            <Insets top="10.0" right="10.0" bottom="10.0" left="10.0"/>
+                        </padding>
+
                         <columnConstraints>
-                            <ColumnConstraints minWidth="120.0" halignment="RIGHT"/>
-                            <ColumnConstraints minWidth="200.0" hgrow="ALWAYS"/>
-                            <ColumnConstraints minWidth="120.0" halignment="RIGHT"/>
-                            <ColumnConstraints minWidth="200.0" hgrow="ALWAYS"/>
+                            <ColumnConstraints minWidth="100.0"/>
+                            <ColumnConstraints hgrow="ALWAYS"/>
+                            <ColumnConstraints minWidth="100.0"/>
+                            <ColumnConstraints hgrow="ALWAYS"/>
                         </columnConstraints>
 
-                        <children>
-                            <Label text="Клиент:"
-                                   GridPane.rowIndex="0" GridPane.columnIndex="0"/>
-                            <ComboBox fx:id="openCustomerCombo"
-                                      GridPane.rowIndex="0" GridPane.columnIndex="1"/>
+                        <Label text="Клиент:" GridPane.rowIndex="0" GridPane.columnIndex="0"/>
+                        <ComboBox fx:id="customerComboBox"
+                                  GridPane.rowIndex="0" GridPane.columnIndex="1"/>
 
-                            <Label text="Продукт:"
-                                   GridPane.rowIndex="0" GridPane.columnIndex="2"/>
-                            <ComboBox fx:id="openProductCombo"
-                                      GridPane.rowIndex="0" GridPane.columnIndex="3"/>
+                        <Label text="Продукт:" GridPane.rowIndex="1" GridPane.columnIndex="0"/>
+                        <ComboBox fx:id="productComboBox"
+                                  GridPane.rowIndex="1" GridPane.columnIndex="1"/>
 
-                            <Label text="Сумма:"
-                                   GridPane.rowIndex="1" GridPane.columnIndex="0"/>
-                            <TextField fx:id="initialAmountField"
-                                       GridPane.rowIndex="1" GridPane.columnIndex="1"/>
+                        <Label text="Дата откр.:" GridPane.rowIndex="0" GridPane.columnIndex="2"/>
+                        <DatePicker fx:id="openDatePicker"
+                                    GridPane.rowIndex="0" GridPane.columnIndex="3"/>
 
-                            <Label text="Дата открытия:"
-                                   GridPane.rowIndex="1" GridPane.columnIndex="2"/>
-                            <DatePicker fx:id="openDatePicker"
-                                        GridPane.rowIndex="1" GridPane.columnIndex="3"/>
-                        </children>
+                        <Label text="Сумма:" GridPane.rowIndex="1" GridPane.columnIndex="2"/>
+                        <TextField fx:id="initialAmountField"
+                                   GridPane.rowIndex="1" GridPane.columnIndex="3"/>
+
+                        <HBox spacing="10.0" alignment="CENTER_RIGHT"
+                              GridPane.rowIndex="2" GridPane.columnIndex="0" GridPane.columnSpan="4">
+                            <Button fx:id="openContractButton" text="Открыть вклад" onAction="#onOpenContract"/>
+                        </HBox>
                     </GridPane>
                 </content>
             </TitledPane>
 
-            <HBox spacing="10.0">
-                <children>
-                    <Button fx:id="openContractButton"
-                            text="Открыть вклад"
-                            onAction="#onOpenContract"/>
-                </children>
-            </HBox>
-
-            <!-- Блок операций по выбранному вкладу -->
+            <!-- Блок операций по вкладу -->
             <TitledPane text="Операции по выбранному вкладу" expanded="true">
                 <content>
-                    <VBox spacing="10.0" padding="10.0">
-                        <children>
-                            <TableView fx:id="operationsTable" prefHeight="180.0">
-                                <columns>
-                                    <TableColumn fx:id="colOpDateTime" text="Дата и время" prefWidth="160.0"/>
-                                    <TableColumn fx:id="colOpType" text="Тип" prefWidth="120.0"/>
-                                    <TableColumn fx:id="colOpAmount" text="Сумма" prefWidth="120.0"/>
-                                    <TableColumn fx:id="colOpDescription" text="Описание" prefWidth="300.0"/>
-                                </columns>
-                            </TableView>
+                    <GridPane hgap="10.0" vgap="8.0">
+                        <padding>
+                            <Insets top="10.0" right="10.0" bottom="10.0" left="10.0"/>
+                        </padding>
 
-                            <HBox spacing="10.0">
-                                <children>
-                                    <Button fx:id="depositButton"
-                                            text="Пополнить"
-                                            onAction="#onDeposit"/>
-                                    <Button fx:id="withdrawButton"
-                                            text="Снять"
-                                            onAction="#onWithdraw"/>
-                                    <Button fx:id="accrueInterestButton"
-                                            text="Начислить проценты"
-                                            onAction="#onAccrueInterest"/>
-                                    <Button fx:id="closeContractButton"
-                                            text="Закрыть вклад"
-                                            onAction="#onCloseContract"/>
-                                </children>
-                            </HBox>
-                        </children>
-                    </VBox>
+                        <columnConstraints>
+                            <ColumnConstraints minWidth="100.0"/>
+                            <ColumnConstraints hgrow="ALWAYS"/>
+                            <ColumnConstraints minWidth="100.0"/>
+                            <ColumnConstraints hgrow="ALWAYS"/>
+                        </columnConstraints>
+
+                        <Label text="Сумма:" GridPane.rowIndex="0" GridPane.columnIndex="0"/>
+                        <TextField fx:id="operationAmountField"
+                                   GridPane.rowIndex="0" GridPane.columnIndex="1"/>
+
+                        <Label text="Описание:" GridPane.rowIndex="1" GridPane.columnIndex="0"/>
+                        <TextField fx:id="operationDescriptionField"
+                                   GridPane.rowIndex="1" GridPane.columnIndex="1" GridPane.columnSpan="3"/>
+
+                        <HBox spacing="10.0" alignment="CENTER_RIGHT"
+                              GridPane.rowIndex="2" GridPane.columnIndex="0" GridPane.columnSpan="4">
+                            <Button fx:id="depositButton" text="Пополнить" onAction="#onDeposit"/>
+                            <Button fx:id="withdrawButton" text="Снять" onAction="#onWithdraw"/>
+                            <Button fx:id="closeContractButton" text="Закрыть вклад" onAction="#onCloseContract"/>
+                        </HBox>
+                    </GridPane>
                 </content>
             </TitledPane>
 
         </VBox>
-    </bottom>
+    </center>
 
 </BorderPane>

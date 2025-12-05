@@ -1,20 +1,30 @@
 package org.santayn.bankdeposit.service;
 
-import lombok.Data;
 import org.santayn.bankdeposit.models.User;
 import org.springframework.stereotype.Component;
 
 /**
- * Контекст текущей сессии пользователя.
- * Хранит информацию о пользователе, вошедшем в систему.
+ * Контекст текущей сессии приложения (JavaFX).
+ * Хранит вошедшего пользователя.
  */
 @Component
-@Data
 public class SessionContext {
 
-    /**
-     * Текущий авторизованный пользователь.
-     * Может быть null до момента успешного входа.
-     */
     private User currentUser;
+
+    public User getCurrentUser() {
+        return currentUser;
+    }
+
+    public void setCurrentUser(User currentUser) {
+        this.currentUser = currentUser;
+    }
+
+    public boolean isAuthenticated() {
+        return currentUser != null;
+    }
+
+    public void clear() {
+        this.currentUser = null;
+    }
 }

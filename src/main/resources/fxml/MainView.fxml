@@ -9,12 +9,13 @@
 <?import javafx.scene.control.TabPane?>
 <?import javafx.scene.layout.BorderPane?>
 <?import javafx.scene.layout.HBox?>
+<?import javafx.scene.layout.VBox?>
+<?import javafx.scene.layout.Pane?>
 
 <BorderPane xmlns="http://javafx.com/javafx/21"
             xmlns:fx="http://javafx.com/fxml/1"
             fx:controller="org.santayn.bankdeposit.ui.MainController">
 
-    <!-- Верхнее меню -->
     <top>
         <MenuBar>
             <menus>
@@ -33,50 +34,50 @@
         </MenuBar>
     </top>
 
-    <!-- Центральная часть – вкладки -->
     <center>
         <TabPane fx:id="mainTabPane">
             <tabs>
-                <!-- Клиенты -->
+
                 <Tab text="Клиенты" closable="false">
                     <content>
-                        <!-- Подключаем отдельное представление клиентов -->
                         <fx:include source="CustomersView.fxml"/>
                     </content>
                 </Tab>
 
-                <!-- Договоры вкладов -->
+                <Tab text="Продукты вкладов" closable="false">
+                    <content>
+                        <fx:include source="DepositProductsView.fxml"/>
+                    </content>
+                </Tab>
+
                 <Tab text="Договоры вкладов" closable="false">
                     <content>
-                        <Label text="Здесь будет список договоров вкладов"/>
+                        <fx:include source="DepositContractsView.fxml"/>
                     </content>
                 </Tab>
 
-                <!-- Операции -->
                 <Tab text="Операции" closable="false">
                     <content>
-                        <Label text="Здесь будет список операций по вкладам"/>
+                        <fx:include source="OperationsView.fxml"/>
                     </content>
                 </Tab>
 
-                <!-- Пользователи -->
                 <Tab text="Пользователи" closable="false">
                     <content>
-                        <Label text="Здесь будет управление пользователями"/>
+                        <fx:include source="UsersView.fxml"/>
                     </content>
                 </Tab>
 
-                <!-- Отчёты -->
                 <Tab text="Отчёты" closable="false">
                     <content>
-                        <Label text="Здесь будет оформление отчётов"/>
+                        <fx:include source="ReportsView.fxml"/>
                     </content>
                 </Tab>
+
             </tabs>
         </TabPane>
     </center>
 
-    <!-- Статус-бар внизу -->
     <bottom>
         <HBox spacing="10.0">
             <padding>

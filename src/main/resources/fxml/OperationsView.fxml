@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+
+<BorderPane xmlns="http://javafx.com/javafx/21"
+            xmlns:fx="http://javafx.com/fxml/1"
+            fx:controller="org.santayn.bankdeposit.ui.OperationsController">
+
+    <top>
+        <VBox spacing="8.0">
+            <padding>
+                <Insets top="10.0" right="10.0" bottom="10.0" left="10.0"/>
+            </padding>
+            <children>
+                <Label text="Операции по вкладам"
+                       style="-fx-font-size: 16px; -fx-font-weight: bold;"/>
+
+                <HBox spacing="10.0">
+                    <children>
+                        <Label text="Договор:"/>
+                        <ComboBox fx:id="contractComboBox" prefWidth="400.0"/>
+                        <Button fx:id="refreshButton"
+                                text="Обновить"
+                                onAction="#onRefresh"/>
+                    </children>
+                </HBox>
+            </children>
+        </VBox>
+    </top>
+
+    <center>
+        <TableView fx:id="operationsTable">
+            <columns>
+                <TableColumn fx:id="idColumn" text="ID" prefWidth="60.0"/>
+                <TableColumn fx:id="dateTimeColumn" text="Дата/время" prefWidth="150.0"/>
+                <TableColumn fx:id="typeColumn" text="Тип" prefWidth="150.0"/>
+                <TableColumn fx:id="amountColumn" text="Сумма" prefWidth="120.0"/>
+                <TableColumn fx:id="descriptionColumn" text="Описание" prefWidth="250.0"/>
+            </columns>
+        </TableView>
+    </center>
+
+    <bottom>
+        <VBox spacing="8.0">
+            <padding>
+                <Insets top="10.0" right="10.0" bottom="10.0" left="10.0"/>
+            </padding>
+            <children>
+                <HBox spacing="10.0">
+                    <children>
+                        <Label text="Сумма:"/>
+                        <TextField fx:id="amountField" prefWidth="120.0"/>
+                        <Label text="Описание:"/>
+                        <TextField fx:id="descriptionField" prefWidth="300.0"/>
+                    </children>
+                </HBox>
+
+                <HBox spacing="10.0">
+                    <children>
+                        <Button fx:id="depositButton"
+                                text="Пополнить"
+                                onAction="#onDeposit"/>
+                        <Button fx:id="withdrawButton"
+                                text="Снять"
+                                onAction="#onWithdraw"/>
+                        <Button fx:id="interestButton"
+                                text="Начислить проценты"
+                                onAction="#onAccrueInterest"/>
+                    </children>
+                </HBox>
+            </children>
+        </VBox>
+    </bottom>
+
+</BorderPane>

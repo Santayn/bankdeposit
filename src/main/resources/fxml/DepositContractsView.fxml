@@ -1,0 +1,181 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.Button?>
+<?import javafx.scene.control.ComboBox?>
+
+<?import javafx.scene.control.Label?>
+
+<?import javafx.scene.control.SplitPane?>
+<?import javafx.scene.control.TableColumn?>
+<?import javafx.scene.control.TableView?>
+<?import javafx.scene.control.TextField?>
+<?import javafx.scene.control.TitledPane?>
+<?import javafx.scene.layout.BorderPane?>
+<?import javafx.scene.layout.ColumnConstraints?>
+<?import javafx.scene.layout.GridPane?>
+<?import javafx.scene.layout.VBox?>
+
+<?import javafx.scene.layout.HBox?>
+<?import javafx.scene.layout.Pane?>
+<BorderPane xmlns="http://javafx.com/javafx"
+            xmlns:fx="http://javafx.com/fxml"
+            fx:controller="org.santayn.bankdeposit.ui.DepositContractsController">
+
+    <top>
+        <HBox spacing="10.0" alignment="CENTER_LEFT">
+            <padding>
+                <Insets top="10.0" right="10.0" bottom="10.0" left="10.0"/>
+            </padding>
+
+            <Label text="Договоры вкладов"
+                   style="-fx-font-size: 18px; -fx-font-weight: bold;"/>
+
+            <Pane/>
+
+            <Label text="Клиент:"/>
+            <ComboBox fx:id="customerFilterCombo" prefWidth="220.0"/>
+
+            <Label text="№ договора:"/>
+            <TextField fx:id="contractNumberSearchField" prefWidth="120.0"/>
+
+            <Button fx:id="filterButton"
+                    text="Применить"
+                    onAction="#onApplyFilter"/>
+
+            <Button fx:id="resetFilterButton"
+                    text="Сбросить"
+                    onAction="#onResetFilter"/>
+        </HBox>
+    </top>
+
+    <center>
+        <VBox spacing="8.0">
+            <padding>
+                <Insets top="0.0" right="10.0" bottom="10.0" left="10.0"/>
+            </padding>
+
+            <SplitPane orientation="VERTICAL" dividerPositions="0.55">
+                <items>
+
+                    <!-- Таблица договоров -->
+                    <VBox spacing="4.0">
+                        <Label text="Список договоров"/>
+
+                        <TableView fx:id="contractsTable" prefHeight="250.0">
+                            <columns>
+                                <TableColumn fx:id="contractNumberColumn"
+                                             text="№ договора" prefWidth="120.0"/>
+                                <TableColumn fx:id="customerColumn"
+                                             text="Клиент" prefWidth="200.0"/>
+                                <TableColumn fx:id="productColumn"
+                                             text="Продукт" prefWidth="180.0"/>
+                                <TableColumn fx:id="statusColumn"
+                                             text="Статус" prefWidth="90.0"/>
+                                <TableColumn fx:id="openDateColumn"
+                                             text="Дата открытия" prefWidth="110.0"/>
+                                <TableColumn fx:id="closeDateColumn"
+                                             text="Дата закрытия" prefWidth="110.0"/>
+                                <TableColumn fx:id="initialAmountColumn"
+                                             text="Начальная сумма" prefWidth="120.0"/>
+                                <TableColumn fx:id="currentBalanceColumn"
+                                             text="Текущий баланс" prefWidth="120.0"/>
+                                <!-- ВАЖНО: двойной % чтобы не искало ResourceBundle -->
+                                <TableColumn fx:id="rateColumn"
+                                             text="%% годовых" prefWidth="100.0"/>
+                            </columns>
+                        </TableView>
+                    </VBox>
+
+                    <!-- Таблица операций по выбранному договору -->
+                    <VBox spacing="4.0">
+                        <Label text="Операции по выбранному договору"/>
+
+                        <TableView fx:id="operationsTable" prefHeight="180.0">
+                            <columns>
+                                <TableColumn fx:id="opDateTimeColumn"
+                                             text="Дата и время" prefWidth="160.0"/>
+                                <TableColumn fx:id="opTypeColumn"
+                                             text="Тип операции" prefWidth="120.0"/>
+                                <TableColumn fx:id="opAmountColumn"
+                                             text="Сумма" prefWidth="120.0"/>
+                                <TableColumn fx:id="opDescriptionColumn"
+                                             text="Описание" prefWidth="300.0"/>
+                            </columns>
+                        </TableView>
+                    </VBox>
+
+                </items>
+            </SplitPane>
+
+            <!-- Блок открытия вклада и операций -->
+            <TitledPane text="Открытие нового вклада и операции" expanded="true">
+                <content>
+                    <GridPane hgap="10.0" vgap="8.0">
+                        <padding>
+                            <Insets top="8.0" right="8.0" bottom="8.0" left="8.0"/>
+                        </padding>
+
+                        <columnConstraints>
+                            <ColumnConstraints minWidth="110.0"/>
+                            <ColumnConstraints hgrow="ALWAYS"/>
+                            <ColumnConstraints minWidth="110.0"/>
+                            <ColumnConstraints hgrow="ALWAYS"/>
+                        </columnConstraints>
+
+                        <!-- Открытие вклада -->
+                        <Label text="Клиент:"
+                               GridPane.rowIndex="0" GridPane.columnIndex="0"/>
+                        <ComboBox fx:id="openCustomerCombo"
+                                  prefWidth="220.0"
+                                  GridPane.rowIndex="0" GridPane.columnIndex="1"/>
+
+                        <Label text="Продукт:"
+                               GridPane.rowIndex="1" GridPane.columnIndex="0"/>
+                        <ComboBox fx:id="openProductCombo"
+                                  prefWidth="220.0"
+                                  GridPane.rowIndex="1" GridPane.columnIndex="1"/>
+
+                        <Label text="Начальная сумма:"
+                               GridPane.rowIndex="2" GridPane.columnIndex="0"/>
+                        <TextField fx:id="openInitialAmountField"
+                                   promptText="Например, 50000"
+                                   GridPane.rowIndex="2" GridPane.columnIndex="1"/>
+
+                        <Button fx:id="openContractButton"
+                                text="Открыть вклад"
+                                onAction="#onOpenContract"
+                                GridPane.rowIndex="3" GridPane.columnIndex="1"
+                                GridPane.halignment="RIGHT"/>
+
+                        <!-- Операции по выбранному договору -->
+                        <Label text="Операции:"
+                               GridPane.rowIndex="0" GridPane.columnIndex="2"/>
+
+                        <HBox spacing="10.0"
+                              GridPane.rowIndex="0" GridPane.columnIndex="3"
+                              GridPane.rowSpan="2"
+                              GridPane.halignment="LEFT"
+                              GridPane.valignment="CENTER">
+
+                            <Button fx:id="depositButton"
+                                    text="Пополнение"
+                                    onAction="#onDeposit"/>
+
+                            <Button fx:id="withdrawButton"
+                                    text="Снятие"
+                                    onAction="#onWithdraw"/>
+
+                            <Button fx:id="closeContractButton"
+                                    text="Закрыть вклад"
+                                    onAction="#onCloseContract"/>
+                        </HBox>
+
+                    </GridPane>
+                </content>
+            </TitledPane>
+
+        </VBox>
+    </center>
+
+</BorderPane>

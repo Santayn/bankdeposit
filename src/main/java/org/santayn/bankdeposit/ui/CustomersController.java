@@ -1,11 +1,11 @@
 package org.santayn.bankdeposit.ui;
 
+import javafx.beans.property.SimpleObjectProperty;
+import javafx.beans.property.SimpleStringProperty;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.fxml.FXML;
 import javafx.scene.control.*;
-import javafx.scene.control.cell.PropertyValueFactory;
-import javafx.scene.layout.GridPane;
 import lombok.RequiredArgsConstructor;
 import org.santayn.bankdeposit.models.Customer;
 import org.santayn.bankdeposit.service.CustomerService;
@@ -14,9 +14,18 @@ import org.santayn.bankdeposit.service.InvalidOperationException;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
+import java.util.List;
+import java.util.Optional;
 
 /**
  * Контроллер вкладки "Клиенты".
+ * Позволяет просматривать список клиентов и выполнять операции:
+ * - создать нового клиента;
+ * - отредактировать выбранного;
+ * - удалить клиента;
+ * - очистить форму;
+ * - найти по паспорту.
  */
 @Component
 @RequiredArgsConstructor
@@ -28,9 +37,6 @@ public class CustomersController {
     private TableView<Customer> customersTable;
 
     @FXML
-    private TableColumn<Customer, Long> idColumn;
-
-    @FXML
     private TableColumn<Customer, String> lastNameColumn;
 
     @FXML
@@ -38,6 +44,9 @@ public class CustomersController {
 
     @FXML
     private TableColumn<Customer, String> middleNameColumn;
+
+    @FXML
+    private TableColumn<Customer, String> dateOfBirthColumn;
 
     @FXML
     private TableColumn<Customer, String> passportColumn;
@@ -49,192 +58,285 @@ public class CustomersController {
     private TableColumn<Customer, String> emailColumn;
 
     @FXML
-    private Button addButton;
+    private TextField firstNameField;
 
     @FXML
-    private Button editButton;
+    private TextField lastNameField;
+
+    @FXML
+    private TextField middleNameField;
+
+    @FXML
+    private DatePicker dateOfBirthPicker;
+
+    @FXML
+    private TextField passportField;
+
+    @FXML
+    private TextField addressField;
+
+    @FXML
+    private TextField phoneField;
+
+    @FXML
+    private TextField emailField;
+
+    @FXML
+    private TextField passportSearchField;
+
+    @FXML
+    private Button newButton;
+
+    @FXML
+    private Button saveButton;
 
     @FXML
     private Button deleteButton;
 
     @FXML
-    private Button refreshButton;
+    private Button clearButton;
+
+    @FXML
+    private Button findByPassportButton;
 
     private final ObservableList<Customer> customers = FXCollections.observableArrayList();
 
+    private final DateTimeFormatter dateFormatter = DateTimeFormatter.ofPattern("dd.MM.yyyy");
+
+    /**
+     * Текущий редактируемый клиент (null, если создаём нового).
+     */
+    private Customer selectedCustomer;
+
     @FXML
     public void initialize() {
-        // Настройка колонок
-        idColumn.setCellValueFactory(new PropertyValueFactory<>("id"));
-        lastNameColumn.setCellValueFactory(new PropertyValueFactory<>("lastName"));
-        firstNameColumn.setCellValueFactory(new PropertyValueFactory<>("firstName"));
-        middleNameColumn.setCellValueFactory(new PropertyValueFactory<>("middleName"));
-        passportColumn.setCellValueFactory(new PropertyValueFactory<>("passportNumber"));
-        phoneColumn.setCellValueFactory(new PropertyValueFactory<>("phone"));
-        emailColumn.setCellValueFactory(new PropertyValueFactory<>("email"));
+        setupTable();
+        loadCustomers();
+        setupSelectionListener();
+    }
 
+    private void setupTable() {
         customersTable.setItems(customers);
 
-        loadCustomers();
+        lastNameColumn.setCellValueFactory(cellData ->
+                new SimpleStringProperty(
+                        Optional.ofNullable(cellData.getValue().getLastName()).orElse("")
+                ));
+
+        firstNameColumn.setCellValueFactory(cellData ->
+                new SimpleStringProperty(
+                        Optional.ofNullable(cellData.getValue().getFirstName()).orElse("")
+                ));
+
+        middleNameColumn.setCellValueFactory(cellData ->
+                new SimpleStringProperty(
+                        Optional.ofNullable(cellData.getValue().getMiddleName()).orElse("")
+                ));
+
+        dateOfBirthColumn.setCellValueFactory(cellData -> {
+            LocalDate dob = cellData.getValue().getDateOfBirth();
+            String text = dob != null ? dob.format(dateFormatter) : "";
+            return new SimpleStringProperty(text);
+        });
+
+        passportColumn.setCellValueFactory(cellData ->
+                new SimpleStringProperty(
+                        Optional.ofNullable(cellData.getValue().getPassportNumber()).orElse("")
+                ));
+
+        phoneColumn.setCellValueFactory(cellData ->
+                new SimpleStringProperty(
+                        Optional.ofNullable(cellData.getValue().getPhone()).orElse("")
+                ));
+
+        emailColumn.setCellValueFactory(cellData ->
+                new SimpleStringProperty(
+                        Optional.ofNullable(cellData.getValue().getEmail()).orElse("")
+                ));
     }
 
-    @FXML
-    private void onRefresh() {
-        loadCustomers();
+    private void loadCustomers() {
+        List<Customer> list = customerService.getAllCustomers();
+        customers.setAll(list);
     }
 
+    private void setupSelectionListener() {
+        customersTable.getSelectionModel().selectedItemProperty().addListener(
+                (obs, oldSelection, newSelection) -> {
+                    if (newSelection != null) {
+                        selectedCustomer = newSelection;
+                        fillFormFromCustomer(newSelection);
+                    }
+                }
+        );
+    }
+
+    private void fillFormFromCustomer(Customer customer) {
+        firstNameField.setText(
+                Optional.ofNullable(customer.getFirstName()).orElse("")
+        );
+        lastNameField.setText(
+                Optional.ofNullable(customer.getLastName()).orElse("")
+        );
+        middleNameField.setText(
+                Optional.ofNullable(customer.getMiddleName()).orElse("")
+        );
+        dateOfBirthPicker.setValue(customer.getDateOfBirth());
+        passportField.setText(
+                Optional.ofNullable(customer.getPassportNumber()).orElse("")
+        );
+        addressField.setText(
+                Optional.ofNullable(customer.getAddress()).orElse("")
+        );
+        phoneField.setText(
+                Optional.ofNullable(customer.getPhone()).orElse("")
+        );
+        emailField.setText(
+                Optional.ofNullable(customer.getEmail()).orElse("")
+        );
+    }
+
+    private void clearForm() {
+        selectedCustomer = null;
+        customersTable.getSelectionModel().clearSelection();
+
+        firstNameField.clear();
+        lastNameField.clear();
+        middleNameField.clear();
+        dateOfBirthPicker.setValue(null);
+        passportField.clear();
+        addressField.clear();
+        phoneField.clear();
+        emailField.clear();
+    }
+
+    // ------------------------ Обработчики кнопок ------------------------
+
+    /**
+     * Нажатие на кнопку "Новый".
+     * Очищает форму и снимает выделение в таблице.
+     */
     @FXML
-    private void onAddCustomer() {
-        Customer edited = showCustomerDialog(null);
-        if (edited != null) {
-            try {
-                customerService.createCustomer(edited);
-                loadCustomers();
-            } catch (InvalidOperationException e) {
-                showError("Ошибка создания клиента", e.getMessage());
-            } catch (Exception e) {
-                showError("Неожиданная ошибка", e.toString());
+    private void onNewCustomer() {
+        clearForm();
+    }
+
+    /**
+     * Нажатие на кнопку "Сохранить".
+     * Если selectedCustomer == null — создаём нового,
+     * иначе обновляем существующего.
+     */
+    @FXML
+    private void onSaveCustomer() {
+        try {
+            Customer formCustomer = buildCustomerFromForm();
+
+            if (selectedCustomer == null) {
+                // Создание нового
+                Customer created = customerService.createCustomer(formCustomer);
+                showInfo("Клиент создан",
+                        "Клиент успешно добавлен с id=" + created.getId());
+            } else {
+                // Обновление существующего
+                Customer updated = customerService.updateCustomer(
+                        selectedCustomer.getId(), formCustomer
+                );
+                showInfo("Клиент обновлён",
+                        "Данные клиента успешно обновлены (id=" + updated.getId() + ")");
             }
+
+            // Перезагружаем список и очищаем форму
+            loadCustomers();
+            clearForm();
+
+        } catch (InvalidOperationException | EntityNotFoundException ex) {
+            showError("Ошибка сохранения", ex.getMessage());
+        } catch (Exception ex) {
+            showError("Неожиданная ошибка", ex.toString());
         }
     }
 
-    @FXML
-    private void onEditCustomer() {
-        Customer selected = customersTable.getSelectionModel().getSelectedItem();
-        if (selected == null) {
-            showInfo("Изменение клиента", "Сначала выберите клиента в таблице.");
-            return;
-        }
-
-        Customer edited = showCustomerDialog(selected);
-        if (edited != null) {
-            try {
-                customerService.updateCustomer(selected.getId(), edited);
-                loadCustomers();
-            } catch (EntityNotFoundException | InvalidOperationException e) {
-                showError("Ошибка изменения клиента", e.getMessage());
-            } catch (Exception e) {
-                showError("Неожиданная ошибка", e.toString());
-            }
-        }
-    }
-
+    /**
+     * Нажатие на кнопку "Удалить".
+     * Удаляет выбранного клиента.
+     */
     @FXML
     private void onDeleteCustomer() {
-        Customer selected = customersTable.getSelectionModel().getSelectedItem();
-        if (selected == null) {
-            showInfo("Удаление клиента", "Сначала выберите клиента в таблице.");
+        if (selectedCustomer == null) {
+            showError("Удаление клиента", "Сначала выберите клиента в таблице");
             return;
         }
 
         Alert confirm = new Alert(Alert.AlertType.CONFIRMATION);
-        confirm.setTitle("Удаление клиента");
+        confirm.setTitle("Подтверждение удаления");
         confirm.setHeaderText(null);
-        confirm.setContentText("Удалить клиента \"" + selected.getLastName() + " " + selected.getFirstName() + "\"?");
+        confirm.setContentText("Удалить клиента \"" +
+                selectedCustomer.getLastName() + " " +
+                selectedCustomer.getFirstName() + "\"?");
+
         confirm.showAndWait().ifPresent(buttonType -> {
             if (buttonType == ButtonType.OK) {
                 try {
-                    customerService.deleteCustomer(selected.getId());
+                    customerService.deleteCustomer(selectedCustomer.getId());
+                    showInfo("Клиент удалён", "Клиент успешно удалён");
                     loadCustomers();
-                } catch (EntityNotFoundException e) {
-                    showError("Ошибка удаления клиента", e.getMessage());
-                } catch (Exception e) {
-                    showError("Неожиданная ошибка", e.toString());
+                    clearForm();
+                } catch (EntityNotFoundException | InvalidOperationException ex) {
+                    showError("Ошибка удаления", ex.getMessage());
+                } catch (Exception ex) {
+                    showError("Неожиданная ошибка", ex.toString());
                 }
             }
         });
-    }
-
-    private void loadCustomers() {
-        customers.setAll(customerService.getAllCustomers());
     }
 
     /**
-     * Простейшее модальное окно редактирования клиента.
-     * Для учебного проекта используем стандартный Dialog без отдельного FXML.
+     * Нажатие на кнопку "Очистить".
+     * Просто очищает форму.
      */
-    private Customer showCustomerDialog(Customer existing) {
-        Dialog<Customer> dialog = new Dialog<>();
-        dialog.setTitle(existing == null ? "Добавление клиента" : "Редактирование клиента");
-        dialog.setHeaderText(null);
+    @FXML
+    private void onClearForm() {
+        clearForm();
+    }
 
-        ButtonType okButtonType = new ButtonType("Сохранить", ButtonBar.ButtonData.OK_DONE);
-        dialog.getDialogPane().getButtonTypes().addAll(okButtonType, ButtonType.CANCEL);
-
-        // Поля формы
-        TextField lastNameField = new TextField();
-        TextField firstNameField = new TextField();
-        TextField middleNameField = new TextField();
-        TextField passportField = new TextField();
-        TextField phoneField = new TextField();
-        TextField emailField = new TextField();
-        TextField birthDateField = new TextField(); // формат ГГГГ-ММ-ДД
-        TextField addressField = new TextField();
-
-        if (existing != null) {
-            lastNameField.setText(existing.getLastName());
-            firstNameField.setText(existing.getFirstName());
-            middleNameField.setText(existing.getMiddleName());
-            passportField.setText(existing.getPassportNumber());
-            phoneField.setText(existing.getPhone());
-            emailField.setText(existing.getEmail());
-            if (existing.getDateOfBirth() != null) {
-                birthDateField.setText(existing.getDateOfBirth().toString());
-            }
-            addressField.setText(existing.getAddress());
+    /**
+     * Поиск клиента по паспорту.
+     */
+    @FXML
+    private void onFindByPassport() {
+        String passport = passportSearchField.getText();
+        if (passport == null || passport.isBlank()) {
+            showError("Поиск по паспорту", "Введите номер паспорта");
+            return;
         }
 
-        GridPane grid = new GridPane();
-        grid.setHgap(10);
-        grid.setVgap(10);
-        grid.setPadding(new javafx.geometry.Insets(20, 150, 10, 10));
+        try {
+            Customer found = customerService.findByPassportNumber(passport);
+            // Выделяем его в таблице и заполняем форму
+            customersTable.getSelectionModel().select(found);
+            customersTable.scrollTo(found);
+            selectedCustomer = found;
+            fillFormFromCustomer(found);
+        } catch (EntityNotFoundException | InvalidOperationException ex) {
+            showError("Поиск по паспорту", ex.getMessage());
+        } catch (Exception ex) {
+            showError("Неожиданная ошибка", ex.toString());
+        }
+    }
 
-        int row = 0;
-        grid.add(new Label("Фамилия:"), 0, row);
-        grid.add(lastNameField, 1, row++);
-        grid.add(new Label("Имя:"), 0, row);
-        grid.add(firstNameField, 1, row++);
-        grid.add(new Label("Отчество:"), 0, row);
-        grid.add(middleNameField, 1, row++);
-        grid.add(new Label("Паспорт:"), 0, row);
-        grid.add(passportField, 1, row++);
-        grid.add(new Label("Телефон:"), 0, row);
-        grid.add(phoneField, 1, row++);
-        grid.add(new Label("E-mail:"), 0, row);
-        grid.add(emailField, 1, row++);
-        grid.add(new Label("Дата рождения (ГГГГ-ММ-ДД):"), 0, row);
-        grid.add(birthDateField, 1, row++);
-        grid.add(new Label("Адрес:"), 0, row);
-        grid.add(addressField, 1, row);
+    // --------------------- Вспомогательные методы ---------------------
 
-        dialog.getDialogPane().setContent(grid);
-
-        dialog.setResultConverter(dialogButton -> {
-            if (dialogButton == okButtonType) {
-                Customer c = existing != null ? new Customer() : new Customer();
-                if (existing != null && existing.getId() != null) {
-                    c.setId(existing.getId());
-                }
-                c.setLastName(lastNameField.getText());
-                c.setFirstName(firstNameField.getText());
-                c.setMiddleName(middleNameField.getText());
-                c.setPassportNumber(passportField.getText());
-                c.setPhone(phoneField.getText());
-                c.setEmail(emailField.getText());
-                c.setAddress(addressField.getText());
-                if (!birthDateField.getText().isBlank()) {
-                    try {
-                        c.setDateOfBirth(LocalDate.parse(birthDateField.getText().trim()));
-                    } catch (Exception e) {
-                        // если дата некорректна, просто игнорируем (можно сделать валидацию)
-                    }
-                }
-                return c;
-            }
-            return null;
-        });
-
-        return dialog.showAndWait().orElse(null);
+    private Customer buildCustomerFromForm() {
+        Customer c = new Customer();
+        c.setFirstName(firstNameField.getText());
+        c.setLastName(lastNameField.getText());
+        c.setMiddleName(middleNameField.getText());
+        c.setDateOfBirth(dateOfBirthPicker.getValue());
+        c.setPassportNumber(passportField.getText());
+        c.setAddress(addressField.getText());
+        c.setPhone(phoneField.getText());
+        c.setEmail(emailField.getText());
+        return c;
     }
 
     private void showError(String title, String message) {

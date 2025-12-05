@@ -1,52 +1,123 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
 <?import javafx.geometry.Insets?>
-<?import javafx.scene.control.Button?>
-<?import javafx.scene.control.Label?>
-<?import javafx.scene.control.TableColumn?>
-<?import javafx.scene.control.TableView?>
-<?import javafx.scene.layout.BorderPane?>
-<?import javafx.scene.layout.HBox?>
-<?import javafx.scene.layout.VBox?>
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
 
-<BorderPane xmlns="http://javafx.com/javafx/21"
-            xmlns:fx="http://javafx.com/fxml/1"
+<BorderPane xmlns="http://javafx.com/javafx"
+            xmlns:fx="http://javafx.com/fxml"
             fx:controller="org.santayn.bankdeposit.ui.CustomersController">
 
-    <!-- Панель с кнопками -->
-    <top>
-        <VBox spacing="5.0">
+    <center>
+        <VBox spacing="8.0">
             <padding>
                 <Insets top="10.0" right="10.0" bottom="10.0" left="10.0"/>
             </padding>
-            <children>
-                <Label text="Клиенты" style="-fx-font-size: 16px; -fx-font-weight: bold;"/>
 
-                <HBox spacing="10.0">
-                    <children>
-                        <Button fx:id="addButton" text="Добавить" onAction="#onAddCustomer"/>
-                        <Button fx:id="editButton" text="Изменить" onAction="#onEditCustomer"/>
-                        <Button fx:id="deleteButton" text="Удалить" onAction="#onDeleteCustomer"/>
-                        <Button fx:id="refreshButton" text="Обновить" onAction="#onRefresh"/>
-                    </children>
-                </HBox>
-            </children>
+            <!-- Заголовок и поиск по паспорту -->
+            <HBox spacing="10.0" alignment="CENTER_LEFT">
+                <Label text="Клиенты банка"
+                       style="-fx-font-size: 18px; -fx-font-weight: bold;"/>
+
+                <Pane HBox.hgrow="ALWAYS"/>
+
+                <Label text="Поиск по паспорту:"/>
+                <TextField fx:id="passportSearchField" prefWidth="160.0"/>
+                <Button fx:id="findByPassportButton"
+                        text="Найти"
+                        onAction="#onFindByPassport"/>
+            </HBox>
+
+            <!-- Таблица клиентов -->
+            <TableView fx:id="customersTable" prefHeight="250.0">
+                <columns>
+                    <TableColumn fx:id="lastNameColumn"
+                                 text="Фамилия" prefWidth="130.0"/>
+                    <TableColumn fx:id="firstNameColumn"
+                                 text="Имя" prefWidth="120.0"/>
+                    <TableColumn fx:id="middleNameColumn"
+                                 text="Отчество" prefWidth="120.0"/>
+                    <TableColumn fx:id="dateOfBirthColumn"
+                                 text="Дата рождения" prefWidth="120.0"/>
+                    <TableColumn fx:id="passportColumn"
+                                 text="Паспорт" prefWidth="140.0"/>
+                    <TableColumn fx:id="phoneColumn"
+                                 text="Телефон" prefWidth="120.0"/>
+                    <TableColumn fx:id="emailColumn"
+                                 text="E-mail" prefWidth="160.0"/>
+                </columns>
+            </TableView>
+
+            <!-- Форма редактирования клиента -->
+            <TitledPane text="Данные клиента" expanded="true">
+                <content>
+                    <GridPane hgap="10.0" vgap="8.0">
+                        <padding>
+                            <Insets top="8.0" right="8.0" bottom="8.0" left="8.0"/>
+                        </padding>
+
+                        <columnConstraints>
+                            <ColumnConstraints minWidth="120.0"/>
+                            <ColumnConstraints hgrow="ALWAYS"/>
+                            <ColumnConstraints minWidth="120.0"/>
+                            <ColumnConstraints hgrow="ALWAYS"/>
+                        </columnConstraints>
+
+                        <!-- Левая колонка -->
+                        <Label text="Фамилия:" GridPane.rowIndex="0" GridPane.columnIndex="0"/>
+                        <TextField fx:id="lastNameField"
+                                   GridPane.rowIndex="0" GridPane.columnIndex="1"/>
+
+                        <Label text="Имя:" GridPane.rowIndex="1" GridPane.columnIndex="0"/>
+                        <TextField fx:id="firstNameField"
+                                   GridPane.rowIndex="1" GridPane.columnIndex="1"/>
+
+                        <Label text="Отчество:" GridPane.rowIndex="2" GridPane.columnIndex="0"/>
+                        <TextField fx:id="middleNameField"
+                                   GridPane.rowIndex="2" GridPane.columnIndex="1"/>
+
+                        <Label text="Дата рождения:" GridPane.rowIndex="3" GridPane.columnIndex="0"/>
+                        <DatePicker fx:id="dateOfBirthPicker"
+                                    GridPane.rowIndex="3" GridPane.columnIndex="1"/>
+
+                        <!-- Правая колонка -->
+                        <Label text="Паспорт:" GridPane.rowIndex="0" GridPane.columnIndex="2"/>
+                        <TextField fx:id="passportField"
+                                   GridPane.rowIndex="0" GridPane.columnIndex="3"/>
+
+                        <Label text="Адрес:" GridPane.rowIndex="1" GridPane.columnIndex="2"/>
+                        <TextField fx:id="addressField"
+                                   GridPane.rowIndex="1" GridPane.columnIndex="3"/>
+
+                        <Label text="Телефон:" GridPane.rowIndex="2" GridPane.columnIndex="2"/>
+                        <TextField fx:id="phoneField"
+                                   GridPane.rowIndex="2" GridPane.columnIndex="3"/>
+
+                        <Label text="E-mail:" GridPane.rowIndex="3" GridPane.columnIndex="2"/>
+                        <TextField fx:id="emailField"
+                                   GridPane.rowIndex="3" GridPane.columnIndex="3"/>
+
+                        <!-- Кнопки управления -->
+                        <HBox spacing="10.0" alignment="CENTER_RIGHT"
+                              GridPane.rowIndex="4" GridPane.columnIndex="0" GridPane.columnSpan="4">
+                            <Button fx:id="newButton"
+                                    text="Новый"
+                                    onAction="#onNewCustomer"/>
+                            <Button fx:id="saveButton"
+                                    text="Сохранить"
+                                    onAction="#onSaveCustomer"/>
+                            <Button fx:id="deleteButton"
+                                    text="Удалить"
+                                    onAction="#onDeleteCustomer"/>
+                            <Button fx:id="clearButton"
+                                    text="Очистить"
+                                    onAction="#onClearForm"/>
+                        </HBox>
+                    </GridPane>
+                </content>
+            </TitledPane>
+
         </VBox>
-    </top>
-
-    <!-- Таблица клиентов -->
-    <center>
-        <TableView fx:id="customersTable">
-            <columns>
-                <TableColumn fx:id="idColumn" text="ID" prefWidth="60.0"/>
-                <TableColumn fx:id="lastNameColumn" text="Фамилия" prefWidth="120.0"/>
-                <TableColumn fx:id="firstNameColumn" text="Имя" prefWidth="120.0"/>
-                <TableColumn fx:id="middleNameColumn" text="Отчество" prefWidth="120.0"/>
-                <TableColumn fx:id="passportColumn" text="Паспорт" prefWidth="120.0"/>
-                <TableColumn fx:id="phoneColumn" text="Телефон" prefWidth="120.0"/>
-                <TableColumn fx:id="emailColumn" text="E-mail" prefWidth="150.0"/>
-            </columns>
-        </TableView>
     </center>
 
 </BorderPane>
