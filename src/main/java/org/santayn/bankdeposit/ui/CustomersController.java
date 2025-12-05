@@ -3,13 +3,9 @@ package org.santayn.bankdeposit.ui;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.fxml.FXML;
-import javafx.scene.control.Alert;
-import javafx.scene.control.Button;
-import javafx.scene.control.DatePicker;
-import javafx.scene.control.TableColumn;
-import javafx.scene.control.TableView;
-import javafx.scene.control.TextField;
+import javafx.scene.control.*;
 import javafx.scene.control.cell.PropertyValueFactory;
+import javafx.scene.layout.GridPane;
 import lombok.RequiredArgsConstructor;
 import org.santayn.bankdeposit.models.Customer;
 import org.santayn.bankdeposit.service.CustomerService;
@@ -18,11 +14,9 @@ import org.santayn.bankdeposit.service.InvalidOperationException;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDate;
-import java.util.List;
 
 /**
- * JavaFX-контроллер экрана "Клиенты".
- * Поднимается как Spring-бин, сервисы внедряются через конструктор.
+ * Контроллер вкладки "Клиенты".
  */
 @Component
 @RequiredArgsConstructor
@@ -30,237 +24,217 @@ public class CustomersController {
 
     private final CustomerService customerService;
 
-    // Таблица
     @FXML
     private TableView<Customer> customersTable;
 
     @FXML
-    private TableColumn<Customer, Long> colId;
+    private TableColumn<Customer, Long> idColumn;
 
     @FXML
-    private TableColumn<Customer, String> colLastName;
+    private TableColumn<Customer, String> lastNameColumn;
 
     @FXML
-    private TableColumn<Customer, String> colFirstName;
+    private TableColumn<Customer, String> firstNameColumn;
 
     @FXML
-    private TableColumn<Customer, String> colPassport;
+    private TableColumn<Customer, String> middleNameColumn;
 
     @FXML
-    private TableColumn<Customer, String> colPhone;
-
-    // Поле поиска
-    @FXML
-    private TextField searchLastNameField;
-
-    // Поля формы
-    @FXML
-    private TextField lastNameField;
+    private TableColumn<Customer, String> passportColumn;
 
     @FXML
-    private TextField firstNameField;
+    private TableColumn<Customer, String> phoneColumn;
 
     @FXML
-    private TextField middleNameField;
-
-    @FXML
-    private DatePicker dateOfBirthPicker;
-
-    @FXML
-    private TextField passportField;
-
-    @FXML
-    private TextField phoneField;
-
-    @FXML
-    private TextField emailField;
-
-    @FXML
-    private TextField addressField;
-
-    // Кнопки
-    @FXML
-    private Button refreshButton;
+    private TableColumn<Customer, String> emailColumn;
 
     @FXML
     private Button addButton;
 
     @FXML
-    private Button updateButton;
+    private Button editButton;
 
     @FXML
     private Button deleteButton;
 
-    private final ObservableList<Customer> customersData = FXCollections.observableArrayList();
+    @FXML
+    private Button refreshButton;
+
+    private final ObservableList<Customer> customers = FXCollections.observableArrayList();
 
     @FXML
     public void initialize() {
-        // Настройка колонок таблицы
-        colId.setCellValueFactory(new PropertyValueFactory<>("id"));
-        colLastName.setCellValueFactory(new PropertyValueFactory<>("lastName"));
-        colFirstName.setCellValueFactory(new PropertyValueFactory<>("firstName"));
-        colPassport.setCellValueFactory(new PropertyValueFactory<>("passportNumber"));
-        colPhone.setCellValueFactory(new PropertyValueFactory<>("phone"));
+        // Настройка колонок
+        idColumn.setCellValueFactory(new PropertyValueFactory<>("id"));
+        lastNameColumn.setCellValueFactory(new PropertyValueFactory<>("lastName"));
+        firstNameColumn.setCellValueFactory(new PropertyValueFactory<>("firstName"));
+        middleNameColumn.setCellValueFactory(new PropertyValueFactory<>("middleName"));
+        passportColumn.setCellValueFactory(new PropertyValueFactory<>("passportNumber"));
+        phoneColumn.setCellValueFactory(new PropertyValueFactory<>("phone"));
+        emailColumn.setCellValueFactory(new PropertyValueFactory<>("email"));
 
-        customersTable.setItems(customersData);
+        customersTable.setItems(customers);
 
-        customersTable.getSelectionModel().selectedItemProperty().addListener(
-                (obs, oldSelection, newSelection) -> {
-                    if (newSelection != null) {
-                        fillForm(newSelection);
-                    }
-                }
-        );
-
-        loadAllCustomers();
-    }
-
-    private void loadAllCustomers() {
-        try {
-            List<Customer> customers = customerService.getAllCustomers();
-            customersData.setAll(customers);
-        } catch (Exception e) {
-            showError("Ошибка загрузки клиентов", e.getMessage());
-        }
+        loadCustomers();
     }
 
     @FXML
     private void onRefresh() {
-        clearSearch();
-        clearForm();
-        loadAllCustomers();
+        loadCustomers();
     }
 
     @FXML
-    private void onSearch() {
-        String query = searchLastNameField.getText();
-        try {
-            List<Customer> customers = customerService.searchByLastName(query);
-            customersData.setAll(customers);
-        } catch (Exception e) {
-            showError("Ошибка поиска", e.getMessage());
-        }
-    }
-
-    @FXML
-    private void onAdd() {
-        try {
-            Customer customer = buildCustomerFromForm(null);
-            Customer saved = customerService.createCustomer(customer);
-            customersData.add(saved);
-            customersTable.getSelectionModel().select(saved);
-            showInfo("Клиент добавлен", "Клиент успешно сохранён.");
-        } catch (InvalidOperationException | EntityNotFoundException e) {
-            showError("Ошибка при сохранении клиента", e.getMessage());
-        } catch (Exception e) {
-            showError("Неожиданная ошибка при сохранении", e.toString());
-        }
-    }
-
-    @FXML
-    private void onUpdate() {
-        Customer selected = customersTable.getSelectionModel().getSelectedItem();
-        if (selected == null) {
-            showError("Не выбран клиент", "Выберите клиента в таблице для редактирования.");
-            return;
-        }
-
-        try {
-            Customer updated = buildCustomerFromForm(selected.getId());
-            Customer saved = customerService.updateCustomer(selected.getId(), updated);
-
-            int index = customersData.indexOf(selected);
-            if (index >= 0) {
-                customersData.set(index, saved);
+    private void onAddCustomer() {
+        Customer edited = showCustomerDialog(null);
+        if (edited != null) {
+            try {
+                customerService.createCustomer(edited);
+                loadCustomers();
+            } catch (InvalidOperationException e) {
+                showError("Ошибка создания клиента", e.getMessage());
+            } catch (Exception e) {
+                showError("Неожиданная ошибка", e.toString());
             }
-
-            customersTable.getSelectionModel().select(saved);
-            showInfo("Клиент обновлён", "Изменения успешно сохранены.");
-        } catch (InvalidOperationException | EntityNotFoundException e) {
-            showError("Ошибка при обновлении клиента", e.getMessage());
-        } catch (Exception e) {
-            showError("Неожиданная ошибка при обновлении", e.toString());
         }
     }
 
     @FXML
-    private void onDelete() {
+    private void onEditCustomer() {
         Customer selected = customersTable.getSelectionModel().getSelectedItem();
         if (selected == null) {
-            showError("Не выбран клиент", "Выберите клиента в таблице для удаления.");
+            showInfo("Изменение клиента", "Сначала выберите клиента в таблице.");
             return;
         }
 
-        try {
-            customerService.deleteCustomer(selected.getId());
-            customersData.remove(selected);
-            clearForm();
-            showInfo("Клиент удалён", "Клиент успешно удалён.");
-        } catch (EntityNotFoundException e) {
-            showError("Ошибка при удалении клиента", e.getMessage());
-        } catch (Exception e) {
-            showError("Неожиданная ошибка при удалении", e.toString());
+        Customer edited = showCustomerDialog(selected);
+        if (edited != null) {
+            try {
+                customerService.updateCustomer(selected.getId(), edited);
+                loadCustomers();
+            } catch (EntityNotFoundException | InvalidOperationException e) {
+                showError("Ошибка изменения клиента", e.getMessage());
+            } catch (Exception e) {
+                showError("Неожиданная ошибка", e.toString());
+            }
         }
     }
 
-    private Customer buildCustomerFromForm(Long id) {
-        String lastName = lastNameField.getText();
-        String firstName = firstNameField.getText();
-        String middleName = middleNameField.getText();
-        LocalDate dateOfBirth = dateOfBirthPicker.getValue();
-        String passport = passportField.getText();
-        String phone = phoneField.getText();
-        String email = emailField.getText();
-        String address = addressField.getText();
-
-        if (lastName == null || lastName.isBlank()) {
-            throw new InvalidOperationException("Фамилия обязательна для заполнения");
-        }
-        if (firstName == null || firstName.isBlank()) {
-            throw new InvalidOperationException("Имя обязательно для заполнения");
-        }
-        if (passport == null || passport.isBlank()) {
-            throw new InvalidOperationException("Паспортные данные обязательны для заполнения");
+    @FXML
+    private void onDeleteCustomer() {
+        Customer selected = customersTable.getSelectionModel().getSelectedItem();
+        if (selected == null) {
+            showInfo("Удаление клиента", "Сначала выберите клиента в таблице.");
+            return;
         }
 
-        return Customer.builder()
-                .id(id)
-                .lastName(lastName.trim())
-                .firstName(firstName.trim())
-                .middleName(middleName == null || middleName.isBlank() ? null : middleName.trim())
-                .dateOfBirth(dateOfBirth)
-                .passportNumber(passport.trim())
-                .phone(phone == null || phone.isBlank() ? null : phone.trim())
-                .email(email == null || email.isBlank() ? null : email.trim())
-                .address(address == null || address.isBlank() ? null : address.trim())
-                .build();
+        Alert confirm = new Alert(Alert.AlertType.CONFIRMATION);
+        confirm.setTitle("Удаление клиента");
+        confirm.setHeaderText(null);
+        confirm.setContentText("Удалить клиента \"" + selected.getLastName() + " " + selected.getFirstName() + "\"?");
+        confirm.showAndWait().ifPresent(buttonType -> {
+            if (buttonType == ButtonType.OK) {
+                try {
+                    customerService.deleteCustomer(selected.getId());
+                    loadCustomers();
+                } catch (EntityNotFoundException e) {
+                    showError("Ошибка удаления клиента", e.getMessage());
+                } catch (Exception e) {
+                    showError("Неожиданная ошибка", e.toString());
+                }
+            }
+        });
     }
 
-    private void fillForm(Customer customer) {
-        lastNameField.setText(customer.getLastName());
-        firstNameField.setText(customer.getFirstName());
-        middleNameField.setText(customer.getMiddleName());
-        dateOfBirthPicker.setValue(customer.getDateOfBirth());
-        passportField.setText(customer.getPassportNumber());
-        phoneField.setText(customer.getPhone());
-        emailField.setText(customer.getEmail());
-        addressField.setText(customer.getAddress());
+    private void loadCustomers() {
+        customers.setAll(customerService.getAllCustomers());
     }
 
-    private void clearForm() {
-        lastNameField.clear();
-        firstNameField.clear();
-        middleNameField.clear();
-        dateOfBirthPicker.setValue(null);
-        passportField.clear();
-        phoneField.clear();
-        emailField.clear();
-        addressField.clear();
-        customersTable.getSelectionModel().clearSelection();
-    }
+    /**
+     * Простейшее модальное окно редактирования клиента.
+     * Для учебного проекта используем стандартный Dialog без отдельного FXML.
+     */
+    private Customer showCustomerDialog(Customer existing) {
+        Dialog<Customer> dialog = new Dialog<>();
+        dialog.setTitle(existing == null ? "Добавление клиента" : "Редактирование клиента");
+        dialog.setHeaderText(null);
 
-    private void clearSearch() {
-        searchLastNameField.clear();
+        ButtonType okButtonType = new ButtonType("Сохранить", ButtonBar.ButtonData.OK_DONE);
+        dialog.getDialogPane().getButtonTypes().addAll(okButtonType, ButtonType.CANCEL);
+
+        // Поля формы
+        TextField lastNameField = new TextField();
+        TextField firstNameField = new TextField();
+        TextField middleNameField = new TextField();
+        TextField passportField = new TextField();
+        TextField phoneField = new TextField();
+        TextField emailField = new TextField();
+        TextField birthDateField = new TextField(); // формат ГГГГ-ММ-ДД
+        TextField addressField = new TextField();
+
+        if (existing != null) {
+            lastNameField.setText(existing.getLastName());
+            firstNameField.setText(existing.getFirstName());
+            middleNameField.setText(existing.getMiddleName());
+            passportField.setText(existing.getPassportNumber());
+            phoneField.setText(existing.getPhone());
+            emailField.setText(existing.getEmail());
+            if (existing.getDateOfBirth() != null) {
+                birthDateField.setText(existing.getDateOfBirth().toString());
+            }
+            addressField.setText(existing.getAddress());
+        }
+
+        GridPane grid = new GridPane();
+        grid.setHgap(10);
+        grid.setVgap(10);
+        grid.setPadding(new javafx.geometry.Insets(20, 150, 10, 10));
+
+        int row = 0;
+        grid.add(new Label("Фамилия:"), 0, row);
+        grid.add(lastNameField, 1, row++);
+        grid.add(new Label("Имя:"), 0, row);
+        grid.add(firstNameField, 1, row++);
+        grid.add(new Label("Отчество:"), 0, row);
+        grid.add(middleNameField, 1, row++);
+        grid.add(new Label("Паспорт:"), 0, row);
+        grid.add(passportField, 1, row++);
+        grid.add(new Label("Телефон:"), 0, row);
+        grid.add(phoneField, 1, row++);
+        grid.add(new Label("E-mail:"), 0, row);
+        grid.add(emailField, 1, row++);
+        grid.add(new Label("Дата рождения (ГГГГ-ММ-ДД):"), 0, row);
+        grid.add(birthDateField, 1, row++);
+        grid.add(new Label("Адрес:"), 0, row);
+        grid.add(addressField, 1, row);
+
+        dialog.getDialogPane().setContent(grid);
+
+        dialog.setResultConverter(dialogButton -> {
+            if (dialogButton == okButtonType) {
+                Customer c = existing != null ? new Customer() : new Customer();
+                if (existing != null && existing.getId() != null) {
+                    c.setId(existing.getId());
+                }
+                c.setLastName(lastNameField.getText());
+                c.setFirstName(firstNameField.getText());
+                c.setMiddleName(middleNameField.getText());
+                c.setPassportNumber(passportField.getText());
+                c.setPhone(phoneField.getText());
+                c.setEmail(emailField.getText());
+                c.setAddress(addressField.getText());
+                if (!birthDateField.getText().isBlank()) {
+                    try {
+                        c.setDateOfBirth(LocalDate.parse(birthDateField.getText().trim()));
+                    } catch (Exception e) {
+                        // если дата некорректна, просто игнорируем (можно сделать валидацию)
+                    }
+                }
+                return c;
+            }
+            return null;
+        });
+
+        return dialog.showAndWait().orElse(null);
     }
 
     private void showError(String title, String message) {

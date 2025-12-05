@@ -37,26 +37,36 @@
     <center>
         <TabPane fx:id="mainTabPane">
             <tabs>
+                <!-- Клиенты -->
                 <Tab text="Клиенты" closable="false">
                     <content>
-                        <Label text="Здесь будет список клиентов"/>
+                        <!-- Подключаем отдельное представление клиентов -->
+                        <fx:include source="CustomersView.fxml"/>
                     </content>
                 </Tab>
+
+                <!-- Договоры вкладов -->
                 <Tab text="Договоры вкладов" closable="false">
                     <content>
                         <Label text="Здесь будет список договоров вкладов"/>
                     </content>
                 </Tab>
+
+                <!-- Операции -->
                 <Tab text="Операции" closable="false">
                     <content>
                         <Label text="Здесь будет список операций по вкладам"/>
                     </content>
                 </Tab>
+
+                <!-- Пользователи -->
                 <Tab text="Пользователи" closable="false">
                     <content>
                         <Label text="Здесь будет управление пользователями"/>
                     </content>
                 </Tab>
+
+                <!-- Отчёты -->
                 <Tab text="Отчёты" closable="false">
                     <content>
                         <Label text="Здесь будет оформление отчётов"/>
