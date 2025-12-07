@@ -1,96 +1,57 @@
 package org.santayn.bankdeposit.models;
 
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.Enumerated;
-import jakarta.persistence.EnumType;
-import jakarta.persistence.FetchType;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
-import jakarta.persistence.JoinColumn;
-import jakarta.persistence.ManyToOne;
-import jakarta.persistence.Table;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
+import jakarta.persistence.*;
+import lombok.*;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
 
 /**
- * Депозитный договор (конкретный вклад клиента).
+ * Договор депозитного вклада.
  */
 @Entity
 @Table(name = "deposit_contracts")
-@Data
+@Getter
+@Setter
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
+@ToString(exclude = {"customer", "product"})
+@EqualsAndHashCode(onlyExplicitlyIncluded = true)
 public class DepositContract {
 
-    /**
-     * Уникальный идентификатор договора.
-     */
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @EqualsAndHashCode.Include
     private Long id;
 
-    /**
-     * Номер договора (отображается клиенту).
-     */
-    @Column(name = "contract_number", nullable = false, length = 50, unique = true)
+    @Column(name = "contract_number", nullable = false, unique = true, length = 50)
     private String contractNumber;
 
-    /**
-     * Клиент, который открыл вклад.
-     */
-    @ManyToOne(fetch = FetchType.EAGER)
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "customer_id", nullable = false)
     private Customer customer;
 
-    /**
-     * Депозитный продукт, по которому открыт вклад.
-     */
-    @ManyToOne(fetch = FetchType.EAGER)
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "product_id", nullable = false)
     private DepositProduct product;
 
-    /**
-     * Дата открытия вклада.
-     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "status", nullable = false, length = 20)
+    private DepositContractStatus status;
+
     @Column(name = "open_date", nullable = false)
     private LocalDate openDate;
 
-    /**
-     * Дата закрытия вклада (если закрыт).
-     */
     @Column(name = "close_date")
     private LocalDate closeDate;
 
-    /**
-     * Сумма, внесённая при открытии вклада.
-     */
-    @Column(name = "initial_amount", precision = 18, scale = 2)
+    @Column(name = "initial_amount", nullable = false, precision = 19, scale = 2)
     private BigDecimal initialAmount;
 
-    /**
-     * Текущий баланс по вкладу.
-     */
-    @Column(name = "current_balance", precision = 18, scale = 2)
+    @Column(name = "current_balance", nullable = false, precision = 19, scale = 2)
     private BigDecimal currentBalance;
 
-    /**
-     * Процентная ставка по договору (может отличаться от базовой у продукта).
-     */
-    @Column(name = "interest_rate", precision = 5, scale = 2)
+    @Column(name = "interest_rate", nullable = false, precision = 7, scale = 4)
     private BigDecimal interestRate;
-
-    /**
-     * Статус договора.
-     */
-    @Enumerated(EnumType.STRING)
-    @Column(name = "status", length = 20, nullable = false)
-    private DepositContractStatus status;
 }

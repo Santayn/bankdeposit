@@ -1,6 +1,5 @@
 package org.santayn.bankdeposit.ui;
 
-import javafx.event.ActionEvent;
 import javafx.fxml.FXML;
 import javafx.fxml.FXMLLoader;
 import javafx.scene.Parent;
@@ -12,23 +11,35 @@ import javafx.scene.control.TextField;
 import javafx.stage.Stage;
 import lombok.RequiredArgsConstructor;
 import org.santayn.bankdeposit.models.User;
-import org.santayn.bankdeposit.service.InvalidOperationException;
 import org.santayn.bankdeposit.service.SessionContext;
 import org.santayn.bankdeposit.service.UserService;
 import org.springframework.context.ApplicationContext;
 import org.springframework.stereotype.Component;
 
+import java.io.IOException;
+import java.util.List;
+
 /**
  * Контроллер окна авторизации.
- * После успешного входа открывает главное окно приложения.
+ *
+ * Работает с LoginView.fxml.
+ *
+ * Логика:
+ * - ищем пользователя по username среди всех пользователей
+ * - проверяем пароль
+ * - проверяем active
+ * - сохраняем пользователя в SessionContext
+ * - подменяем сцену primaryStage на MainView.fxml
  */
 @Component
 @RequiredArgsConstructor
 public class LoginController {
 
     private final UserService userService;
-    private final ApplicationContext applicationContext;
     private final SessionContext sessionContext;
+    private final ApplicationContext applicationContext;
+
+    private Stage primaryStage;
 
     @FXML
     private TextField usernameField;
@@ -43,18 +54,7 @@ public class LoginController {
     private Button exitButton;
 
     /**
-     * Основной Stage приложения, в который после авторизации
-     * подставляется главное окно.
-     */
-    private Stage primaryStage;
-
-    /**
-     * Устанавливает основной Stage приложения, чтобы при успешном входе
-     * заменить сцену на главное окно.
-     *
-     * Вызывается из BankDepositJavaFxApplication после загрузки LoginView.
-     *
-     * @param primaryStage основной Stage
+     * Устанавливается из BankDepositJavaFxApplication после загрузки FXML.
      */
     public void setPrimaryStage(Stage primaryStage) {
         this.primaryStage = primaryStage;
@@ -62,57 +62,100 @@ public class LoginController {
 
     @FXML
     public void initialize() {
-        // Для удобства тестирования сразу подставим admin
+        // Ничего критичного, но можно добавить удобство:
         if (usernameField != null) {
-            usernameField.setText("admin");
+            usernameField.requestFocus();
         }
     }
 
     @FXML
-    private void onLogin(ActionEvent event) {
-        String username = usernameField.getText();
-        String password = passwordField.getText();
-
+    private void onLogin() {
         try {
-            User user = userService.authenticate(username, password);
-            // Сохраняем пользователя в контексте сессии
-            sessionContext.setCurrentUser(user);
-            // Открываем главное окно
-            openMainWindow(user);
-        } catch (InvalidOperationException e) {
-            showError("Ошибка входа", e.getMessage());
-        } catch (Exception e) {
-            showError("Неожиданная ошибка", e.toString());
+            String username = safe(usernameField.getText());
+            String password = safe(passwordField.getText());
+
+            if (username.isBlank()) {
+                showError("Авторизация", "Введите логин.");
+                return;
+            }
+            if (password.isBlank()) {
+                showError("Авторизация", "Введите пароль.");
+                return;
+            }
+
+            List<User> all = userService.getAllUsers();
+
+            User found = all.stream()
+                    .filter(u -> u.getUsername() != null && u.getUsername().equals(username))
+                    .findFirst()
+                    .orElse(null);
+
+            if (found == null) {
+                showError("Авторизация", "Пользователь не найден.");
+                return;
+            }
+
+            if (found.getActive() == null || !found.getActive()) {
+                showError("Авторизация", "Пользователь неактивен.");
+                return;
+            }
+
+            String storedPassword = found.getPassword() != null ? found.getPassword() : "";
+            if (!storedPassword.equals(password)) {
+                showError("Авторизация", "Неверный пароль.");
+                return;
+            }
+
+            // Успешный вход
+            sessionContext.setCurrentUser(found);
+
+            openMainView();
+
+        } catch (Exception ex) {
+            showError("Неожиданная ошибка", ex.toString());
         }
     }
 
     @FXML
-    private void onExit(ActionEvent event) {
+    private void onExit() {
         if (primaryStage != null) {
             primaryStage.close();
-        } else {
-            System.exit(0);
         }
     }
 
-    private void openMainWindow(User user) {
+    // ---------------------- Navigation ----------------------
+
+    private void openMainView() {
+        if (primaryStage == null) {
+            showError("Авторизация", "Не удалось определить главное окно приложения.");
+            return;
+        }
+
         try {
-            FXMLLoader loader = new FXMLLoader(
-                    getClass().getResource("/fxml/MainView.fxml")
-            );
+            FXMLLoader loader = new FXMLLoader(getClass().getResource("/fxml/MainView.fxml"));
             loader.setControllerFactory(applicationContext::getBean);
 
             Parent root = loader.load();
 
-            Scene scene = new Scene(root, 1000, 600);
+            Scene scene = new Scene(root, 1100, 700);
+            primaryStage.setTitle("Депозитный отдел банка");
             primaryStage.setScene(scene);
-            primaryStage.setTitle("Депозитный отдел банка — пользователь: "
-                    + user.getFullName() + " (" + user.getRole().name() + ")");
-            primaryStage.show();
-        } catch (Exception e) {
-            showError("Ошибка открытия главного окна", e.toString());
+            primaryStage.setMinWidth(900);
+            primaryStage.setMinHeight(600);
+            primaryStage.centerOnScreen();
+
+        } catch (IOException e) {
+            showError("Ошибка", "Не удалось открыть главное окно: " + e.getMessage());
         }
     }
+
+    // ---------------------- Helpers ----------------------
+
+    private String safe(String s) {
+        return s == null ? "" : s.trim();
+    }
+
+    // ---------------------- Alerts ----------------------
 
     private void showError(String title, String message) {
         Alert alert = new Alert(Alert.AlertType.ERROR);

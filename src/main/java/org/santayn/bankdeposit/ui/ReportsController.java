@@ -21,14 +21,19 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 
 /**
  * Контроллер вкладки "Отчёты".
- * Позволяет получить:
- * 1) все договоры клиента;
- * 2) активные договоры клиента;
- * 3) операции за период (с фильтром по типу).
+ *
+ * Функции:
+ * 1) Договоры выбранного клиента
+ * 2) Активные вклады клиента
+ * 3) Операции за период (+ фильтр по типу)
+ *
+ * Работает с ReportsView.fxml.
  */
 @Component
 @RequiredArgsConstructor
@@ -36,9 +41,12 @@ public class ReportsController {
 
     private final ReportService reportService;
 
-    // Верхние элементы
+    // ---------------------- Верхняя панель ----------------------
+
     @FXML
     private Button refreshButton;
+
+    // ---------------------- Параметры отчёта ----------------------
 
     @FXML
     private ComboBox<Customer> customerComboBox;
@@ -64,7 +72,8 @@ public class ReportsController {
     @FXML
     private Button clearButton;
 
-    // Таблица договоров
+    // ---------------------- Таблица договоров ----------------------
+
     @FXML
     private TableView<DepositContract> contractsTable;
 
@@ -92,10 +101,15 @@ public class ReportsController {
     @FXML
     private TableColumn<DepositContract, String> currentBalanceColumn;
 
+    /**
+     * В твоём FXML ранее был столбец "% годовых" без fx:id.
+     * Если добавишь fx:id="rateColumn" — он тоже заполнится.
+     */
     @FXML
     private TableColumn<DepositContract, String> rateColumn;
 
-    // Таблица операций
+    // ---------------------- Таблица операций ----------------------
+
     @FXML
     private TableView<DepositOperation> operationsTable;
 
@@ -114,9 +128,13 @@ public class ReportsController {
     @FXML
     private TableColumn<DepositOperation, String> opDescriptionColumn;
 
+    // ---------------------- Данные ----------------------
+
     private final ObservableList<Customer> customers = FXCollections.observableArrayList();
     private final ObservableList<DepositContract> contracts = FXCollections.observableArrayList();
     private final ObservableList<DepositOperation> operations = FXCollections.observableArrayList();
+
+    // ---------------------- Init ----------------------
 
     @FXML
     public void initialize() {
@@ -124,11 +142,39 @@ public class ReportsController {
         setupOperationTypeCombo();
         setupContractsTable();
         setupOperationsTable();
-        initDefaultDates();
-        loadReferenceData();
+        bindItems();
+
+        loadDictionaries();
+
+        // Небольшой удобный дефолт периода
+        LocalDate now = LocalDate.now();
+        if (fromDatePicker != null) {
+            fromDatePicker.setValue(now.minusMonths(1));
+        }
+        if (toDatePicker != null) {
+            toDatePicker.setValue(now);
+        }
     }
 
+    private void bindItems() {
+        if (contractsTable != null) {
+            contractsTable.setItems(contracts);
+        }
+        if (operationsTable != null) {
+            operationsTable.setItems(operations);
+        }
+        if (customerComboBox != null) {
+            customerComboBox.setItems(customers);
+        }
+    }
+
+    // ---------------------- Combo setup ----------------------
+
     private void setupCustomerCombo() {
+        if (customerComboBox == null) {
+            return;
+        }
+
         StringConverter<Customer> converter = new StringConverter<>() {
             @Override
             public String toString(Customer c) {
@@ -138,7 +184,7 @@ public class ReportsController {
                 String middle = c.getMiddleName() != null && !c.getMiddleName().isBlank()
                         ? " " + c.getMiddleName().trim()
                         : "";
-                return (c.getLastName() + " " + c.getFirstName() + middle).trim();
+                return (safe(c.getLastName()) + " " + safe(c.getFirstName()) + middle).trim();
             }
 
             @Override
@@ -148,134 +194,240 @@ public class ReportsController {
         };
 
         customerComboBox.setConverter(converter);
-        customerComboBox.setCellFactory(lv -> new ListCell<>() {
+
+        customerComboBox.setCellFactory(list -> new ListCell<>() {
             @Override
             protected void updateItem(Customer item, boolean empty) {
                 super.updateItem(item, empty);
-                setText(empty || item == null ? null : converter.toString(item));
+                if (empty || item == null) {
+                    setText(null);
+                } else {
+                    setText(converter.toString(item));
+                }
             }
         });
 
-        customerComboBox.setItems(customers);
+        customerComboBox.setButtonCell(new ListCell<>() {
+            @Override
+            protected void updateItem(Customer item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty || item == null) {
+                    setText(null);
+                } else {
+                    setText(converter.toString(item));
+                }
+            }
+        });
     }
 
     private void setupOperationTypeCombo() {
-        operationTypeComboBox.getItems().setAll(DepositOperationType.values());
-        operationTypeComboBox.getSelectionModel().clearSelection();
+        if (operationTypeComboBox == null) {
+            return;
+        }
 
-        // Можно сделать "пустой" выбор для всех типов:
-        operationTypeComboBox.setPromptText("Все типы");
+        List<DepositOperationType> list = new ArrayList<>();
+        list.add(null); // "Все типы"
+        for (DepositOperationType t : DepositOperationType.values()) {
+            list.add(t);
+        }
+
+        operationTypeComboBox.setItems(FXCollections.observableArrayList(list));
+
+        StringConverter<DepositOperationType> converter = new StringConverter<>() {
+            @Override
+            public String toString(DepositOperationType type) {
+                if (type == null) {
+                    return "Все";
+                }
+                return type.name();
+            }
+
+            @Override
+            public DepositOperationType fromString(String string) {
+                return null;
+            }
+        };
+
+        operationTypeComboBox.setConverter(converter);
+
+        operationTypeComboBox.setCellFactory(lv -> new ListCell<>() {
+            @Override
+            protected void updateItem(DepositOperationType item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty) {
+                    setText(null);
+                    return;
+                }
+                setText(converter.toString(item));
+            }
+        });
+
+        operationTypeComboBox.setButtonCell(new ListCell<>() {
+            @Override
+            protected void updateItem(DepositOperationType item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty) {
+                    setText(null);
+                    return;
+                }
+                setText(converter.toString(item));
+            }
+        });
+
+        operationTypeComboBox.getSelectionModel().selectFirst();
     }
+
+    // ---------------------- Table setup ----------------------
 
     private void setupContractsTable() {
-        contractNumberColumn.setCellValueFactory(new PropertyValueFactory<>("contractNumber"));
+        if (contractsTable == null) {
+            return;
+        }
 
-        customerColumn.setCellValueFactory(cell -> {
-            DepositContract c = cell.getValue();
-            Customer cust = c != null ? c.getCustomer() : null;
-            if (cust == null) {
-                return new SimpleStringProperty("");
-            }
-            String middle = cust.getMiddleName() != null && !cust.getMiddleName().isBlank()
-                    ? " " + cust.getMiddleName().trim()
-                    : "";
-            return new SimpleStringProperty((cust.getLastName() + " " + cust.getFirstName() + middle).trim());
-        });
+        if (contractNumberColumn != null) {
+            contractNumberColumn.setCellValueFactory(new PropertyValueFactory<>("contractNumber"));
+        }
 
-        productColumn.setCellValueFactory(cell -> {
-            DepositProduct p = cell.getValue() != null ? cell.getValue().getProduct() : null;
-            return new SimpleStringProperty(p != null ? p.getName() : "");
-        });
+        if (customerColumn != null) {
+            customerColumn.setCellValueFactory(cell -> {
+                Customer c = cell.getValue().getCustomer();
+                return new SimpleStringProperty(formatCustomerShort(c));
+            });
+        }
 
-        statusColumn.setCellValueFactory(cell -> {
-            DepositContractStatus st = cell.getValue() != null ? cell.getValue().getStatus() : null;
-            return new SimpleStringProperty(st != null ? st.name() : "");
-        });
+        if (productColumn != null) {
+            productColumn.setCellValueFactory(cell -> {
+                DepositProduct p = cell.getValue().getProduct();
+                return new SimpleStringProperty(p != null ? safe(p.getName()) : "");
+            });
+        }
 
-        openDateColumn.setCellValueFactory(cell -> {
-            LocalDate d = cell.getValue() != null ? cell.getValue().getOpenDate() : null;
-            return new SimpleStringProperty(d != null ? d.toString() : "");
-        });
+        if (statusColumn != null) {
+            statusColumn.setCellValueFactory(cell -> {
+                DepositContractStatus st = cell.getValue().getStatus();
+                return new SimpleStringProperty(st != null ? st.name() : "");
+            });
+        }
 
-        closeDateColumn.setCellValueFactory(cell -> {
-            LocalDate d = cell.getValue() != null ? cell.getValue().getCloseDate() : null;
-            return new SimpleStringProperty(d != null ? d.toString() : "");
-        });
+        if (openDateColumn != null) {
+            openDateColumn.setCellValueFactory(cell -> {
+                LocalDate d = cell.getValue().getOpenDate();
+                return new SimpleStringProperty(d != null ? d.toString() : "");
+            });
+        }
 
-        initialAmountColumn.setCellValueFactory(cell -> {
-            BigDecimal v = cell.getValue() != null ? cell.getValue().getInitialAmount() : null;
-            return new SimpleStringProperty(v != null ? v.toPlainString() : "");
-        });
+        if (closeDateColumn != null) {
+            closeDateColumn.setCellValueFactory(cell -> {
+                LocalDate d = cell.getValue().getCloseDate();
+                return new SimpleStringProperty(d != null ? d.toString() : "");
+            });
+        }
 
-        currentBalanceColumn.setCellValueFactory(cell -> {
-            BigDecimal v = cell.getValue() != null ? cell.getValue().getCurrentBalance() : null;
-            return new SimpleStringProperty(v != null ? v.toPlainString() : "");
-        });
+        if (initialAmountColumn != null) {
+            initialAmountColumn.setCellValueFactory(cell -> {
+                BigDecimal v = cell.getValue().getInitialAmount();
+                return new SimpleStringProperty(v != null ? v.toPlainString() : "0.00");
+            });
+        }
 
-        rateColumn.setCellValueFactory(cell -> {
-            BigDecimal v = cell.getValue() != null ? cell.getValue().getInterestRate() : null;
-            return new SimpleStringProperty(v != null ? v.toPlainString() : "");
-        });
+        if (currentBalanceColumn != null) {
+            currentBalanceColumn.setCellValueFactory(cell -> {
+                BigDecimal v = cell.getValue().getCurrentBalance();
+                return new SimpleStringProperty(v != null ? v.toPlainString() : "0.00");
+            });
+        }
 
-        contractsTable.setItems(contracts);
-    }
-
-    private void setupOperationsTable() {
-        opDateTimeColumn.setCellValueFactory(new PropertyValueFactory<>("operationDateTime"));
-        opAmountColumn.setCellValueFactory(new PropertyValueFactory<>("amount"));
-        opDescriptionColumn.setCellValueFactory(new PropertyValueFactory<>("description"));
-
-        DateTimeFormatter fmt = DateTimeFormatter.ofPattern("dd.MM.yyyy HH:mm");
-        opDateTimeColumn.setCellFactory(col -> new TableCell<>() {
-            @Override
-            protected void updateItem(LocalDateTime item, boolean empty) {
-                super.updateItem(item, empty);
-                setText(empty || item == null ? null : item.format(fmt));
-            }
-        });
-
-        opTypeColumn.setCellValueFactory(cell -> {
-            DepositOperation op = cell.getValue();
-            DepositOperationType type = op != null ? op.getType() : null;
-            return new SimpleStringProperty(type != null ? type.name() : "");
-        });
-
-        opContractColumn.setCellValueFactory(cell -> {
-            DepositOperation op = cell.getValue();
-            DepositContract c = op != null ? op.getContract() : null;
-            return new SimpleStringProperty(c != null ? c.getContractNumber() : "");
-        });
-
-        operationsTable.setItems(operations);
-    }
-
-    private void initDefaultDates() {
-        LocalDate now = LocalDate.now();
-        fromDatePicker.setValue(now.minusMonths(1));
-        toDatePicker.setValue(now);
-    }
-
-    private void loadReferenceData() {
-        List<Customer> list = reportService.getAllCustomers();
-        customers.setAll(list);
-
-        if (!customers.isEmpty() && customerComboBox.getValue() == null) {
-            customerComboBox.getSelectionModel().selectFirst();
+        if (rateColumn != null) {
+            rateColumn.setCellValueFactory(cell -> {
+                BigDecimal v = cell.getValue().getInterestRate();
+                return new SimpleStringProperty(v != null ? v.toPlainString() : "");
+            });
         }
     }
 
-    // -------------------- Actions --------------------
+    private void setupOperationsTable() {
+        if (operationsTable == null) {
+            return;
+        }
+
+        DateTimeFormatter fmt = DateTimeFormatter.ofPattern("dd.MM.yyyy HH:mm");
+
+        if (opDateTimeColumn != null) {
+            opDateTimeColumn.setCellValueFactory(new PropertyValueFactory<>("operationDateTime"));
+            opDateTimeColumn.setCellFactory(col -> new TableCell<>() {
+                @Override
+                protected void updateItem(LocalDateTime item, boolean empty) {
+                    super.updateItem(item, empty);
+                    if (empty || item == null) {
+                        setText(null);
+                        return;
+                    }
+                    setText(item.format(fmt));
+                }
+            });
+        }
+
+        if (opTypeColumn != null) {
+            opTypeColumn.setCellValueFactory(cell -> {
+                try {
+                    var t = cell.getValue().getType();
+                    return new SimpleStringProperty(t != null ? t.name() : "");
+                } catch (Exception e) {
+                    return new SimpleStringProperty("");
+                }
+            });
+        }
+
+        if (opAmountColumn != null) {
+            opAmountColumn.setCellValueFactory(new PropertyValueFactory<>("amount"));
+        }
+
+        if (opContractColumn != null) {
+            opContractColumn.setCellValueFactory(cell -> {
+                try {
+                    DepositContract c = cell.getValue().getContract();
+                    String num = c != null ? c.getContractNumber() : "";
+                    return new SimpleStringProperty(num != null ? num : "");
+                } catch (Exception e) {
+                    return new SimpleStringProperty("");
+                }
+            });
+        }
+
+        if (opDescriptionColumn != null) {
+            opDescriptionColumn.setCellValueFactory(new PropertyValueFactory<>("description"));
+        }
+    }
+
+    // ---------------------- Load dictionaries ----------------------
 
     @FXML
     private void onRefresh() {
-        loadReferenceData();
+        loadDictionaries();
         showInfo("Отчёты", "Справочники обновлены.");
     }
 
+    private void loadDictionaries() {
+        try {
+            List<Customer> cl = reportService.getAllCustomers();
+            customers.setAll(cl);
+
+            if (customerComboBox != null && !customers.isEmpty()
+                    && customerComboBox.getSelectionModel().getSelectedItem() == null) {
+                customerComboBox.getSelectionModel().selectFirst();
+            }
+
+        } catch (Exception e) {
+            customers.clear();
+        }
+    }
+
+    // ---------------------- Build reports ----------------------
+
     @FXML
     private void onBuildCustomerContracts() {
-        Customer customer = customerComboBox.getValue();
-        if (customer == null) {
+        Customer customer = customerComboBox != null ? customerComboBox.getValue() : null;
+        if (customer == null || customer.getId() == null) {
             showError("Договоры клиента", "Выберите клиента.");
             return;
         }
@@ -284,6 +436,11 @@ public class ReportsController {
             List<DepositContract> list = reportService.getContractsByCustomer(customer.getId());
             contracts.setAll(list);
             operations.clear();
+
+            if (list.isEmpty()) {
+                showInfo("Договоры клиента", "У клиента нет договоров.");
+            }
+
         } catch (Exception ex) {
             showError("Договоры клиента", ex.toString());
         }
@@ -291,8 +448,8 @@ public class ReportsController {
 
     @FXML
     private void onBuildActiveCustomerContracts() {
-        Customer customer = customerComboBox.getValue();
-        if (customer == null) {
+        Customer customer = customerComboBox != null ? customerComboBox.getValue() : null;
+        if (customer == null || customer.getId() == null) {
             showError("Активные вклады", "Выберите клиента.");
             return;
         }
@@ -301,6 +458,11 @@ public class ReportsController {
             List<DepositContract> list = reportService.getActiveContractsByCustomer(customer.getId());
             contracts.setAll(list);
             operations.clear();
+
+            if (list.isEmpty()) {
+                showInfo("Активные вклады", "У клиента нет активных вкладов.");
+            }
+
         } catch (Exception ex) {
             showError("Активные вклады", ex.toString());
         }
@@ -308,24 +470,34 @@ public class ReportsController {
 
     @FXML
     private void onBuildOperationsByPeriod() {
-        LocalDate from = fromDatePicker.getValue();
-        LocalDate to = toDatePicker.getValue();
+        LocalDate from = fromDatePicker != null ? fromDatePicker.getValue() : null;
+        LocalDate to = toDatePicker != null ? toDatePicker.getValue() : null;
 
         if (from == null || to == null) {
-            showError("Операции за период", "Укажите период (дата с / дата по).");
+            showError("Операции за период", "Укажите обе даты периода.");
             return;
         }
+
         if (to.isBefore(from)) {
             showError("Операции за период", "Дата 'по' не может быть раньше даты 'с'.");
             return;
         }
 
-        DepositOperationType type = operationTypeComboBox.getValue();
+        DepositOperationType type = operationTypeComboBox != null
+                ? operationTypeComboBox.getValue()
+                : null;
 
         try {
-            List<DepositOperation> list = reportService.getOperationsByPeriodAndType(from, to, type);
+            List<DepositOperation> list =
+                    reportService.getOperationsByPeriodAndType(from, to, type);
+
             operations.setAll(list);
             contracts.clear();
+
+            if (list.isEmpty()) {
+                showInfo("Операции за период", "За выбранный период операций не найдено.");
+            }
+
         } catch (Exception ex) {
             showError("Операции за период", ex.toString());
         }
@@ -337,7 +509,23 @@ public class ReportsController {
         operations.clear();
     }
 
-    // -------------------- Alerts --------------------
+    // ---------------------- Helpers ----------------------
+
+    private String formatCustomerShort(Customer c) {
+        if (c == null) {
+            return "";
+        }
+        String middle = c.getMiddleName() != null && !c.getMiddleName().isBlank()
+                ? " " + c.getMiddleName().trim()
+                : "";
+        return (safe(c.getLastName()) + " " + safe(c.getFirstName()) + middle).trim();
+    }
+
+    private String safe(String s) {
+        return s == null ? "" : s.trim();
+    }
+
+    // ---------------------- Alerts ----------------------
 
     private void showError(String title, String message) {
         Alert alert = new Alert(Alert.AlertType.ERROR);

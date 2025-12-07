@@ -10,17 +10,26 @@ import javafx.scene.control.cell.PropertyValueFactory;
 import lombok.RequiredArgsConstructor;
 import org.santayn.bankdeposit.models.User;
 import org.santayn.bankdeposit.models.UserRole;
-import org.santayn.bankdeposit.service.EntityNotFoundException;
-import org.santayn.bankdeposit.service.InvalidOperationException;
-import org.santayn.bankdeposit.service.SessionContext;
-import org.santayn.bankdeposit.service.UserService;
+import org.santayn.bankdeposit.service.*;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
-import java.util.Optional;
+import java.util.Objects;
+import java.util.stream.Collectors;
 
 /**
  * Контроллер вкладки "Пользователи".
+ *
+ * Функции:
+ * - просмотр списка
+ * - поиск по логину
+ * - создание нового пользователя
+ * - редактирование
+ * - удаление
+ *
+ * UI-доступ:
+ * - только ADMIN имеет право на управление пользователями
+ * - остальные роли: только просмотр (вкладка обычно скрыта в MainController)
  */
 @Component
 @RequiredArgsConstructor
@@ -28,8 +37,10 @@ public class UsersController {
 
     private final UserService userService;
     private final SessionContext sessionContext;
+    private final UiAccessManager uiAccessManager;
 
-    // Поиск
+    // ---------------------- Search/top controls ----------------------
+
     @FXML
     private TextField usernameSearchField;
 
@@ -42,7 +53,8 @@ public class UsersController {
     @FXML
     private Button refreshButton;
 
-    // Таблица
+    // ---------------------- Table ----------------------
+
     @FXML
     private TableView<User> usersTable;
 
@@ -61,7 +73,8 @@ public class UsersController {
     @FXML
     private TableColumn<User, Boolean> activeColumn;
 
-    // Форма
+    // ---------------------- Form ----------------------
+
     @FXML
     private TextField usernameField;
 
@@ -78,9 +91,6 @@ public class UsersController {
     private CheckBox activeCheckBox;
 
     @FXML
-    private Label hintLabel;
-
-    @FXML
     private Button newButton;
 
     @FXML
@@ -92,38 +102,54 @@ public class UsersController {
     @FXML
     private Button clearButton;
 
+    // ---------------------- Data ----------------------
+
     private final ObservableList<User> users = FXCollections.observableArrayList();
+    private final ObservableList<UserRole> roles = FXCollections.observableArrayList();
 
     private User selectedUser;
 
+    // ---------------------- Init ----------------------
+
     @FXML
     public void initialize() {
-        setupTable();
         setupRoles();
-        loadAllUsers();
+        setupTable();
         setupSelectionListener();
-        resetFormToDefault();
+        bindItems();
+
+        loadAllUsers();
+        clearForm();
+
+        applyRoleUiAccess();
+        updateButtonsState();
+    }
+
+    private void bindItems() {
+        usersTable.setItems(users);
+        roleComboBox.setItems(roles);
+    }
+
+    private void setupRoles() {
+        roles.setAll(UserRole.values());
+        if (!roles.isEmpty()) {
+            roleComboBox.getSelectionModel().selectFirst();
+        }
     }
 
     private void setupTable() {
         idColumn.setCellValueFactory(new PropertyValueFactory<>("id"));
         usernameColumn.setCellValueFactory(new PropertyValueFactory<>("username"));
-
-        fullNameColumn.setCellValueFactory(cell -> {
-            User u = cell.getValue();
-            return new SimpleStringProperty(u != null && u.getFullName() != null ? u.getFullName() : "");
-        });
+        fullNameColumn.setCellValueFactory(new PropertyValueFactory<>("fullName"));
 
         roleColumn.setCellValueFactory(cell -> {
-            User u = cell.getValue();
-            return new SimpleStringProperty(u != null && u.getRole() != null ? u.getRole().name() : "");
+            UserRole r = cell.getValue().getRole();
+            return new SimpleStringProperty(r != null ? r.name() : "");
         });
 
-        activeColumn.setCellValueFactory(cell -> {
-            User u = cell.getValue();
-            boolean active = u != null && Boolean.TRUE.equals(u.getActive());
-            return new SimpleBooleanProperty(active);
-        });
+        activeColumn.setCellValueFactory(cell ->
+                new SimpleBooleanProperty(Boolean.TRUE.equals(cell.getValue().getActive()))
+        );
 
         activeColumn.setCellFactory(col -> new TableCell<>() {
             @Override
@@ -131,175 +157,181 @@ public class UsersController {
                 super.updateItem(item, empty);
                 if (empty) {
                     setText(null);
-                } else {
-                    setText(Boolean.TRUE.equals(item) ? "Да" : "Нет");
+                    return;
                 }
+                setText(Boolean.TRUE.equals(item) ? "Да" : "Нет");
             }
         });
-
-        usersTable.setItems(users);
-    }
-
-    private void setupRoles() {
-        roleComboBox.getItems().setAll(UserRole.values());
-        roleComboBox.getSelectionModel().select(UserRole.OPERATOR);
     }
 
     private void setupSelectionListener() {
-        usersTable.getSelectionModel().selectedItemProperty().addListener((obs, oldSel, newSel) -> {
-            selectedUser = newSel;
-            fillFormFromSelection();
-            updateButtonsState();
-        });
-
-        if (!users.isEmpty()) {
-            usersTable.getSelectionModel().selectFirst();
-        }
-        updateButtonsState();
+        usersTable.getSelectionModel().selectedItemProperty().addListener(
+                (obs, oldSel, newSel) -> {
+                    selectedUser = newSel;
+                    fillFormFromSelection();
+                    updateButtonsState();
+                }
+        );
     }
 
-    private void updateButtonsState() {
-        boolean hasSelection = selectedUser != null;
+    // ---------------------- Role UI access ----------------------
 
-        deleteButton.setDisable(!hasSelection);
+    private void applyRoleUiAccess() {
+        User current = sessionContext.getCurrentUser();
+        boolean canManage = uiAccessManager.canManageUsers(current);
 
-        // Нельзя удалять admin
-        if (hasSelection && selectedUser.getRole() == UserRole.ADMIN) {
-            deleteButton.setDisable(true);
-        }
+        usernameField.setDisable(!canManage);
+        passwordField.setDisable(!canManage);
+        fullNameField.setDisable(!canManage);
+        roleComboBox.setDisable(!canManage);
+        activeCheckBox.setDisable(!canManage);
+
+        newButton.setDisable(!canManage);
+        saveButton.setDisable(!canManage);
+        deleteButton.setDisable(!canManage);
+        clearButton.setDisable(!canManage);
     }
+
+    // ---------------------- Load ----------------------
 
     private void loadAllUsers() {
         List<User> list = userService.getAllUsers();
         users.setAll(list);
-    }
 
-    private void fillFormFromSelection() {
-        if (selectedUser == null) {
-            resetFormToDefault();
-            return;
-        }
-
-        usernameField.setText(selectedUser.getUsername() != null ? selectedUser.getUsername() : "");
-        passwordField.setText(selectedUser.getPassword() != null ? selectedUser.getPassword() : "");
-        fullNameField.setText(selectedUser.getFullName() != null ? selectedUser.getFullName() : "");
-        roleComboBox.getSelectionModel().select(selectedUser.getRole() != null ? selectedUser.getRole() : UserRole.OPERATOR);
-        activeCheckBox.setSelected(Boolean.TRUE.equals(selectedUser.getActive()));
-
-        hintLabel.setText("Редактирование существующего пользователя (ID=" + selectedUser.getId() + ").");
-    }
-
-    private void resetFormToDefault() {
-        usernameField.clear();
-        passwordField.clear();
-        fullNameField.clear();
-        roleComboBox.getSelectionModel().select(UserRole.OPERATOR);
-        activeCheckBox.setSelected(true);
-
-        hintLabel.setText("Новый пользователь будет создан при сохранении без выбранной строки.");
-    }
-
-    private User buildUserFromForm() {
-        User u = new User();
-        u.setUsername(usernameField.getText());
-        u.setPassword(passwordField.getText());
-        u.setFullName(fullNameField.getText());
-        u.setRole(roleComboBox.getValue());
-        u.setActive(activeCheckBox.isSelected());
-        return u;
-    }
-
-    private void reloadAndSelect(Long id) {
-        loadAllUsers();
-
-        if (id == null) {
-            usersTable.getSelectionModel().clearSelection();
+        if (!users.isEmpty()) {
+            usersTable.getSelectionModel().selectFirst();
+            selectedUser = usersTable.getSelectionModel().getSelectedItem();
+        } else {
             selectedUser = null;
-            updateButtonsState();
-            return;
         }
 
-        for (User u : users) {
-            if (id.equals(u.getId())) {
-                usersTable.getSelectionModel().select(u);
-                usersTable.scrollTo(u);
-                selectedUser = u;
-                break;
-            }
-        }
+        fillFormFromSelection();
         updateButtonsState();
     }
 
-    // -------------------- Actions --------------------
-
-    @FXML
-    private void onRefresh() {
-        loadAllUsers();
-        updateButtonsState();
-    }
+    // ---------------------- Search ----------------------
 
     @FXML
     private void onFindByUsername() {
         String query = usernameSearchField.getText();
-        if (query == null || query.isBlank()) {
-            showInfo("Поиск", "Введите логин для поиска.");
-            return;
+        List<User> list = userService.getAllUsers();
+
+        if (query != null && !query.isBlank()) {
+            String q = query.trim().toLowerCase();
+            list = list.stream()
+                    .filter(u -> u.getUsername() != null && u.getUsername().toLowerCase().contains(q))
+                    .collect(Collectors.toList());
         }
 
-        Optional<User> found = userService.findByUsername(query.trim());
+        users.setAll(list);
 
-        if (found.isEmpty()) {
-            showInfo("Поиск", "Пользователь не найден.");
-            return;
+        if (!users.isEmpty()) {
+            usersTable.getSelectionModel().selectFirst();
+            selectedUser = usersTable.getSelectionModel().getSelectedItem();
+        } else {
+            selectedUser = null;
         }
 
-        User u = found.get();
-
-        loadAllUsers();
-        reloadAndSelect(u.getId());
+        fillFormFromSelection();
+        updateButtonsState();
     }
 
     @FXML
     private void onResetSearch() {
         usernameSearchField.clear();
         loadAllUsers();
-        if (!users.isEmpty()) {
-            usersTable.getSelectionModel().selectFirst();
-        }
     }
+
+    @FXML
+    private void onRefresh() {
+        loadAllUsers();
+        showInfo("Пользователи", "Список обновлён.");
+    }
+
+    // ---------------------- Form actions ----------------------
 
     @FXML
     private void onNewUser() {
+        User current = sessionContext.getCurrentUser();
+        if (!uiAccessManager.canManageUsers(current)) {
+            showInfo("Пользователи", "Недостаточно прав.");
+            return;
+        }
+
         usersTable.getSelectionModel().clearSelection();
         selectedUser = null;
-        resetFormToDefault();
+        clearForm();
         updateButtonsState();
-    }
-
-    @FXML
-    private void onClearForm() {
-        resetFormToDefault();
+        usernameField.requestFocus();
     }
 
     @FXML
     private void onSaveUser() {
+        User current = sessionContext.getCurrentUser();
+        if (!uiAccessManager.canManageUsers(current)) {
+            showInfo("Пользователи", "Недостаточно прав.");
+            return;
+        }
+
         try {
-            User formUser = buildUserFromForm();
+            String username = safe(usernameField.getText());
+            String password = safe(passwordField.getText());
+            String fullName = safe(fullNameField.getText());
+            UserRole role = roleComboBox.getValue();
+            boolean active = activeCheckBox.isSelected();
 
-            User saved;
-
-            if (selectedUser == null) {
-                saved = userService.createUserValidated(formUser);
-                showInfo("Пользователи", "Пользователь создан: " + saved.getUsername());
-            } else {
-                saved = userService.updateUserValidated(selectedUser.getId(), formUser, sessionContext.getCurrentUser());
-                showInfo("Пользователи", "Пользователь обновлён: " + saved.getUsername());
+            if (username.isBlank()) {
+                showError("Пользователь", "Логин не может быть пустым.");
+                return;
+            }
+            if (fullName.isBlank()) {
+                showError("Пользователь", "ФИО не может быть пустым.");
+                return;
+            }
+            if (role == null) {
+                showError("Пользователь", "Выберите роль.");
+                return;
             }
 
-            reloadAndSelect(saved.getId());
+            if (selectedUser == null) {
+                if (password.isBlank()) {
+                    showError("Пользователь", "Для нового пользователя пароль обязателен.");
+                    return;
+                }
+
+                User u = new User();
+                u.setUsername(username);
+                u.setPassword(password);
+                u.setFullName(fullName);
+                u.setRole(role);
+                u.setActive(active);
+
+                User created = userService.createUser(u);
+                reloadAndSelect(created.getId());
+
+                showInfo("Пользователь", "Пользователь создан: " + safe(created.getUsername()));
+            } else {
+                User updated = new User();
+                updated.setUsername(username);
+
+                if (password.isBlank()) {
+                    updated.setPassword(selectedUser.getPassword());
+                } else {
+                    updated.setPassword(password);
+                }
+
+                updated.setFullName(fullName);
+                updated.setRole(role);
+                updated.setActive(active);
+
+                User result = userService.updateUser(selectedUser.getId(), updated);
+                reloadAndSelect(result.getId());
+
+                showInfo("Пользователь", "Пользователь обновлён: " + safe(result.getUsername()));
+            }
 
         } catch (InvalidOperationException | EntityNotFoundException ex) {
-            showError("Сохранение пользователя", ex.getMessage());
+            showError("Пользователь", ex.getMessage());
         } catch (Exception ex) {
             showError("Неожиданная ошибка", ex.toString());
         }
@@ -307,37 +339,32 @@ public class UsersController {
 
     @FXML
     private void onDeleteUser() {
-        if (selectedUser == null) {
-            showInfo("Удаление", "Сначала выберите пользователя.");
-            return;
-        }
-
-        if (selectedUser.getRole() == UserRole.ADMIN) {
-            showError("Удаление", "Пользователя с ролью ADMIN удалять нельзя.");
-            return;
-        }
-
         User current = sessionContext.getCurrentUser();
-        if (current != null && current.getId() != null && current.getId().equals(selectedUser.getId())) {
-            showError("Удаление", "Нельзя удалить самого себя.");
+        if (!uiAccessManager.canManageUsers(current)) {
+            showInfo("Удаление", "Недостаточно прав.");
+            return;
+        }
+
+        if (selectedUser == null || selectedUser.getId() == null) {
+            showInfo("Удаление", "Сначала выберите пользователя.");
             return;
         }
 
         Alert confirm = new Alert(Alert.AlertType.CONFIRMATION);
         confirm.setTitle("Удаление пользователя");
         confirm.setHeaderText(null);
-        confirm.setContentText("Удалить пользователя " + selectedUser.getUsername() + "?");
+        confirm.setContentText("Удалить пользователя " + safe(selectedUser.getUsername()) + "?");
 
         confirm.getButtonTypes().setAll(ButtonType.YES, ButtonType.NO);
 
         confirm.showAndWait().ifPresent(bt -> {
             if (bt == ButtonType.YES) {
                 try {
-                    userService.deleteUserValidated(selectedUser.getId(), sessionContext.getCurrentUser());
-                    reloadAndSelect(null);
-                    resetFormToDefault();
+                    userService.deleteUser(selectedUser.getId());
+                    loadAllUsers();
+                    clearForm();
                 } catch (InvalidOperationException | EntityNotFoundException ex) {
-                    showError("Удаление пользователя", ex.getMessage());
+                    showError("Удаление", ex.getMessage());
                 } catch (Exception ex) {
                     showError("Неожиданная ошибка", ex.toString());
                 }
@@ -345,7 +372,90 @@ public class UsersController {
         });
     }
 
-    // -------------------- Alerts --------------------
+    @FXML
+    private void onClearForm() {
+        clearForm();
+        updateButtonsState();
+    }
+
+    // ---------------------- Helpers ----------------------
+
+    private void reloadAndSelect(Long id) {
+        List<User> list = userService.getAllUsers();
+        users.setAll(list);
+
+        selectedUser = null;
+
+        if (id != null) {
+            for (User u : users) {
+                if (Objects.equals(u.getId(), id)) {
+                    usersTable.getSelectionModel().select(u);
+                    usersTable.scrollTo(u);
+                    selectedUser = u;
+                    break;
+                }
+            }
+        }
+
+        if (selectedUser == null && !users.isEmpty()) {
+            usersTable.getSelectionModel().selectFirst();
+            selectedUser = usersTable.getSelectionModel().getSelectedItem();
+        }
+
+        fillFormFromSelection();
+        updateButtonsState();
+    }
+
+    private void fillFormFromSelection() {
+        if (selectedUser == null) {
+            clearForm();
+            return;
+        }
+
+        usernameField.setText(safe(selectedUser.getUsername()));
+        passwordField.clear();
+        fullNameField.setText(safe(selectedUser.getFullName()));
+
+        if (selectedUser.getRole() != null) {
+            roleComboBox.getSelectionModel().select(selectedUser.getRole());
+        } else if (!roles.isEmpty()) {
+            roleComboBox.getSelectionModel().selectFirst();
+        }
+
+        activeCheckBox.setSelected(Boolean.TRUE.equals(selectedUser.getActive()));
+    }
+
+    private void clearForm() {
+        usernameField.clear();
+        passwordField.clear();
+        fullNameField.clear();
+
+        if (!roles.isEmpty()) {
+            roleComboBox.getSelectionModel().selectFirst();
+        } else {
+            roleComboBox.getSelectionModel().clearSelection();
+        }
+
+        activeCheckBox.setSelected(true);
+    }
+
+    private void updateButtonsState() {
+        User current = sessionContext.getCurrentUser();
+        boolean canManage = uiAccessManager.canManageUsers(current);
+
+        boolean hasSelection = selectedUser != null && selectedUser.getId() != null;
+
+        deleteButton.setDisable(!canManage || !hasSelection);
+        saveButton.setDisable(!canManage);
+        newButton.setDisable(!canManage);
+        clearButton.setDisable(!canManage);
+    }
+
+    private String safe(String s) {
+        return s == null ? "" : s.trim();
+    }
+
+    // ---------------------- Alerts ----------------------
 
     private void showError(String title, String message) {
         Alert alert = new Alert(Alert.AlertType.ERROR);

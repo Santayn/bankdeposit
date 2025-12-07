@@ -12,8 +12,8 @@ import javafx.scene.control.ListCell;
 import javafx.scene.control.TableCell;
 import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableView;
-import javafx.scene.control.TextInputDialog;
 import javafx.scene.control.TextField;
+import javafx.scene.control.TextInputDialog;
 import javafx.scene.control.cell.PropertyValueFactory;
 import javafx.util.StringConverter;
 import lombok.RequiredArgsConstructor;
@@ -22,12 +22,9 @@ import org.santayn.bankdeposit.models.DepositContract;
 import org.santayn.bankdeposit.models.DepositContractStatus;
 import org.santayn.bankdeposit.models.DepositOperation;
 import org.santayn.bankdeposit.models.DepositProduct;
-import org.santayn.bankdeposit.service.CustomerService;
-import org.santayn.bankdeposit.service.DepositContractService;
-import org.santayn.bankdeposit.service.DepositOperationService;
-import org.santayn.bankdeposit.service.DepositProductService;
-import org.santayn.bankdeposit.service.EntityNotFoundException;
-import org.santayn.bankdeposit.service.InvalidOperationException;
+import org.santayn.bankdeposit.models.User;
+import org.santayn.bankdeposit.service.*;
+import org.santayn.bankdeposit.ui.MoneyUtil;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
@@ -46,7 +43,11 @@ import java.util.stream.Collectors;
  * - таблица договоров
  * - таблица операций выбранного договора
  * - блок открытия нового вклада и быстрых операций
- * - начисление процентов по всем активным договорам (если кнопка есть в FXML)
+ *
+ * UI-доступ по ролям:
+ * - управление договорами: ADMIN, MANAGER, OPERATOR
+ * - финансовые операции: ADMIN, OPERATOR
+ * - остальные роли: только просмотр
  */
 @Component
 @RequiredArgsConstructor
@@ -56,6 +57,9 @@ public class DepositContractsController {
     private final DepositProductService depositProductService;
     private final DepositContractService depositContractService;
     private final DepositOperationService depositOperationService;
+
+    private final SessionContext sessionContext;
+    private final UiAccessManager uiAccessManager;
 
     // ---------------------- Фильтры (верхняя панель) ----------------------
 
@@ -167,6 +171,7 @@ public class DepositContractsController {
         loadDictionaries();
         loadContractsAll();
 
+        applyRoleUiAccess();
         updateButtonsState();
     }
 
@@ -296,20 +301,17 @@ public class DepositContractsController {
             return new SimpleStringProperty(d != null ? d.toString() : "");
         });
 
-        initialAmountColumn.setCellValueFactory(cell -> {
-            BigDecimal v = cell.getValue().getInitialAmount();
-            return new SimpleStringProperty(v != null ? v.toPlainString() : "0.00");
-        });
+        initialAmountColumn.setCellValueFactory(cell ->
+                new SimpleStringProperty(MoneyUtil.formatMoney(cell.getValue().getInitialAmount()))
+        );
 
-        currentBalanceColumn.setCellValueFactory(cell -> {
-            BigDecimal v = cell.getValue().getCurrentBalance();
-            return new SimpleStringProperty(v != null ? v.toPlainString() : "0.00");
-        });
+        currentBalanceColumn.setCellValueFactory(cell ->
+                new SimpleStringProperty(MoneyUtil.formatMoney(cell.getValue().getCurrentBalance()))
+        );
 
-        rateColumn.setCellValueFactory(cell -> {
-            BigDecimal v = cell.getValue().getInterestRate();
-            return new SimpleStringProperty(v != null ? v.toPlainString() : "");
-        });
+        rateColumn.setCellValueFactory(cell ->
+                new SimpleStringProperty(MoneyUtil.formatRate(cell.getValue().getInterestRate()))
+        );
 
         contractsTable.setItems(contracts);
     }
@@ -333,7 +335,6 @@ public class DepositContractsController {
         opAmountColumn.setCellValueFactory(new PropertyValueFactory<>("amount"));
         opDescriptionColumn.setCellValueFactory(new PropertyValueFactory<>("description"));
 
-        // Ориентируемся на getType()
         opTypeColumn.setCellValueFactory(cell -> {
             try {
                 var t = cell.getValue().getType();
@@ -356,19 +357,34 @@ public class DepositContractsController {
                 });
     }
 
+    // ---------------------- Role UI access ----------------------
+
+    private void applyRoleUiAccess() {
+        User current = sessionContext.getCurrentUser();
+
+        boolean canManageContracts = uiAccessManager.canManageContracts(current);
+        boolean canOperate = uiAccessManager.canOperateDeposits(current);
+
+        openCustomerCombo.setDisable(!canManageContracts);
+        openProductCombo.setDisable(!canManageContracts);
+        openInitialAmountField.setDisable(!canManageContracts);
+        openContractButton.setDisable(!canManageContracts);
+
+        depositButton.setDisable(!canOperate);
+        withdrawButton.setDisable(!canOperate);
+
+        closeContractButton.setDisable(!canManageContracts);
+    }
+
     // ---------------------- Load data ----------------------
 
     private void loadDictionaries() {
-        List<Customer> cl = customerService.getAllCustomers();
-        customers.setAll(cl);
-
-        List<DepositProduct> pl = depositProductService.getAllProducts();
-        products.setAll(pl);
+        customers.setAll(customerService.getAllCustomers());
+        products.setAll(depositProductService.getAllProducts());
     }
 
     private void loadContractsAll() {
-        List<DepositContract> list = depositContractService.getAllContracts();
-        contracts.setAll(list);
+        contracts.setAll(depositContractService.getAllContracts());
 
         if (!contracts.isEmpty()) {
             contractsTable.getSelectionModel().selectFirst();
@@ -388,102 +404,16 @@ public class DepositContractsController {
         }
 
         try {
-            List<DepositOperation> list =
-                    depositOperationService.getOperationsByContract(selectedContract.getId());
-            operations.setAll(list);
+            operations.setAll(depositOperationService.getOperationsByContract(selectedContract.getId()));
         } catch (Exception e) {
             operations.clear();
-        }
-    }
-
-    // ---------------------- FXML handler: Refresh ----------------------
-
-    @FXML
-    private void onRefresh() {
-        loadDictionaries();
-        loadContractsAll();
-    }
-
-    // ---------------------- FXML handler: Accrue interest for all ----------------------
-
-    /**
-     * Обработчик кнопки начисления процентов по всем активным договорам.
-     *
-     * Важно: сделано под "короткую" сигнатуру сервиса:
-     * accrueInterest(Long contractId, BigDecimal amount)
-     *
-     * Если позже бизнес-логика изменится на автоматический расчёт процентов,
-     * можно будет заменить ввод суммы на вызов нового сервисного метода без параметра amount.
-     */
-    @FXML
-    private void onAccrueInterestForAll() {
-        try {
-            List<DepositContract> all = depositContractService.getAllContracts();
-            List<DepositContract> openList = all.stream()
-                    .filter(c -> c != null && c.getStatus() == DepositContractStatus.OPEN)
-                    .toList();
-
-            if (openList.isEmpty()) {
-                showInfo("Начисление процентов", "Нет активных вкладов для начисления процентов.");
-                return;
-            }
-
-            TextInputDialog dialog = new TextInputDialog();
-            dialog.setTitle("Начисление процентов");
-            dialog.setHeaderText(null);
-            dialog.setContentText("Введите сумму начисления для каждого активного вклада:");
-
-            dialog.showAndWait().ifPresent(text -> {
-                BigDecimal amount = parseMoney(text, "Начисление процентов");
-                if (amount == null) {
-                    return;
-                }
-
-                int ok = 0;
-                StringBuilder errors = new StringBuilder();
-
-                for (DepositContract c : openList) {
-                    try {
-                        if (c.getId() == null) {
-                            continue;
-                        }
-                        depositOperationService.accrueInterest(c.getId(), amount);
-                        ok++;
-                    } catch (InvalidOperationException | EntityNotFoundException ex) {
-                        errors.append("Договор ")
-                                .append(safe(c.getContractNumber()))
-                                .append(": ")
-                                .append(ex.getMessage())
-                                .append("\n");
-                    } catch (Exception ex) {
-                        errors.append("Договор ")
-                                .append(safe(c.getContractNumber()))
-                                .append(": ")
-                                .append(ex)
-                                .append("\n");
-                    }
-                }
-
-                loadContractsAll();
-
-                if (errors.isEmpty()) {
-                    showInfo("Начисление процентов",
-                            "Начисление выполнено успешно. Обработано активных вкладов: " + ok);
-                } else {
-                    showError("Начисление процентов",
-                            "Частично выполнено. Успешно: " + ok + " из " + openList.size() + "\n\n" + errors);
-                }
-            });
-
-        } catch (Exception ex) {
-            showError("Начисление процентов", ex.toString());
         }
     }
 
     // ---------------------- Filters ----------------------
 
     @FXML
-    private void onApplyFilter() {
+    public void onApplyFilter() {
         try {
             Customer filterCustomer = customerFilterCombo.getValue();
             String numberPart = contractNumberSearchField.getText();
@@ -525,7 +455,7 @@ public class DepositContractsController {
     }
 
     @FXML
-    private void onResetFilter() {
+    public void onResetFilter() {
         customerFilterCombo.getSelectionModel().clearSelection();
         contractNumberSearchField.clear();
         loadContractsAll();
@@ -534,8 +464,14 @@ public class DepositContractsController {
     // ---------------------- Open contract ----------------------
 
     @FXML
-    private void onOpenContract() {
+    public void onOpenContract() {
         try {
+            User current = sessionContext.getCurrentUser();
+            if (!uiAccessManager.canManageContracts(current)) {
+                showInfo("Открытие вклада", "Недостаточно прав для открытия вкладов.");
+                return;
+            }
+
             Customer customer = openCustomerCombo.getValue();
             DepositProduct product = openProductCombo.getValue();
 
@@ -548,7 +484,7 @@ public class DepositContractsController {
                 return;
             }
 
-            BigDecimal amount = parseMoney(openInitialAmountField.getText(), "Начальная сумма");
+            BigDecimal amount = parseMoneyUI(openInitialAmountField.getText(), "Начальная сумма");
             if (amount == null) {
                 return;
             }
@@ -576,7 +512,13 @@ public class DepositContractsController {
     // ---------------------- Quick operations ----------------------
 
     @FXML
-    private void onDeposit() {
+    public void onDeposit() {
+        User current = sessionContext.getCurrentUser();
+        if (!uiAccessManager.canOperateDeposits(current)) {
+            showInfo("Пополнение", "Недостаточно прав для операций.");
+            return;
+        }
+
         if (!ensureOpenSelected("Пополнение")) {
             return;
         }
@@ -587,7 +529,7 @@ public class DepositContractsController {
         dialog.setContentText("Введите сумму пополнения:");
 
         dialog.showAndWait().ifPresent(text -> {
-            BigDecimal amount = parseMoney(text, "Пополнение");
+            BigDecimal amount = parseMoneyUI(text, "Пополнение");
             if (amount == null) {
                 return;
             }
@@ -607,7 +549,13 @@ public class DepositContractsController {
     }
 
     @FXML
-    private void onWithdraw() {
+    public void onWithdraw() {
+        User current = sessionContext.getCurrentUser();
+        if (!uiAccessManager.canOperateDeposits(current)) {
+            showInfo("Снятие", "Недостаточно прав для операций.");
+            return;
+        }
+
         if (!ensureOpenSelected("Снятие")) {
             return;
         }
@@ -618,7 +566,7 @@ public class DepositContractsController {
         dialog.setContentText("Введите сумму снятия:");
 
         dialog.showAndWait().ifPresent(text -> {
-            BigDecimal amount = parseMoney(text, "Снятие");
+            BigDecimal amount = parseMoneyUI(text, "Снятие");
             if (amount == null) {
                 return;
             }
@@ -638,7 +586,13 @@ public class DepositContractsController {
     }
 
     @FXML
-    private void onCloseContract() {
+    public void onCloseContract() {
+        User current = sessionContext.getCurrentUser();
+        if (!uiAccessManager.canManageContracts(current)) {
+            showInfo("Закрытие вклада", "Недостаточно прав для закрытия вкладов.");
+            return;
+        }
+
         if (selectedContract == null || selectedContract.getId() == null) {
             showInfo("Закрытие вклада", "Сначала выберите договор.");
             return;
@@ -689,9 +643,7 @@ public class DepositContractsController {
     }
 
     private void reloadContractsAndSelect(Long id) {
-        List<DepositContract> list = depositContractService.getAllContracts();
-        contracts.setAll(list);
-
+        contracts.setAll(depositContractService.getAllContracts());
         selectedContract = null;
 
         if (id != null) {
@@ -714,11 +666,18 @@ public class DepositContractsController {
     }
 
     private void updateButtonsState() {
+        User current = sessionContext.getCurrentUser();
+
+        boolean canManageContracts = uiAccessManager.canManageContracts(current);
+        boolean canOperate = uiAccessManager.canOperateDeposits(current);
+
         boolean hasSelection = selectedContract != null;
 
-        depositButton.setDisable(!hasSelection);
-        withdrawButton.setDisable(!hasSelection);
-        closeContractButton.setDisable(!hasSelection);
+        openContractButton.setDisable(!canManageContracts);
+
+        depositButton.setDisable(!canOperate || !hasSelection);
+        withdrawButton.setDisable(!canOperate || !hasSelection);
+        closeContractButton.setDisable(!canManageContracts || !hasSelection);
 
         if (hasSelection && selectedContract.getStatus() != DepositContractStatus.OPEN) {
             depositButton.setDisable(true);
@@ -727,22 +686,13 @@ public class DepositContractsController {
         }
     }
 
-    private BigDecimal parseMoney(String text, String fieldName) {
-        if (text == null || text.isBlank()) {
-            showError(fieldName, "Введите сумму.");
+    private BigDecimal parseMoneyUI(String text, String fieldName) {
+        BigDecimal amount = MoneyUtil.parsePositiveMoney(text);
+        if (amount == null) {
+            showError(fieldName, "Неверный формат суммы или сумма должна быть больше нуля. Пример: 100000.50");
             return null;
         }
-        try {
-            BigDecimal amount = new BigDecimal(text.trim().replace(',', '.'));
-            if (amount.compareTo(BigDecimal.ZERO) <= 0) {
-                showError(fieldName, "Сумма должна быть больше нуля.");
-                return null;
-            }
-            return amount;
-        } catch (Exception e) {
-            showError(fieldName, "Неверный формат суммы. Пример: 100000.50");
-            return null;
-        }
+        return amount;
     }
 
     private String formatCustomerShort(Customer c) {

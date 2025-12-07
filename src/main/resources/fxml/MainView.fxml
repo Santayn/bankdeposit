@@ -1,16 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
 <?import javafx.geometry.Insets?>
-<?import javafx.scene.control.Label?>
-<?import javafx.scene.control.Menu?>
-<?import javafx.scene.control.MenuBar?>
-<?import javafx.scene.control.MenuItem?>
-<?import javafx.scene.control.Tab?>
-<?import javafx.scene.control.TabPane?>
-<?import javafx.scene.layout.BorderPane?>
-<?import javafx.scene.layout.HBox?>
-<?import javafx.scene.layout.VBox?>
-<?import javafx.scene.layout.Pane?>
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
 
 <BorderPane xmlns="http://javafx.com/javafx/21"
             xmlns:fx="http://javafx.com/fxml/1"
@@ -22,6 +14,7 @@
                 <Menu text="Файл">
                     <items>
                         <MenuItem text="Выход" onAction="#onExit"/>
+                        <MenuItem text="Сменить пользователя" onAction="#onLogout"/>
                     </items>
                 </Menu>
 
@@ -38,37 +31,37 @@
         <TabPane fx:id="mainTabPane">
             <tabs>
 
-                <Tab text="Клиенты" closable="false">
+                <Tab fx:id="customersTab" text="Клиенты" closable="false">
                     <content>
                         <fx:include source="CustomersView.fxml"/>
                     </content>
                 </Tab>
 
-                <Tab text="Продукты вкладов" closable="false">
+                <Tab fx:id="productsTab" text="Продукты вкладов" closable="false">
                     <content>
                         <fx:include source="DepositProductsView.fxml"/>
                     </content>
                 </Tab>
 
-                <Tab text="Договоры вкладов" closable="false">
+                <Tab fx:id="contractsTab" text="Договоры вкладов" closable="false">
                     <content>
                         <fx:include source="DepositContractsView.fxml"/>
                     </content>
                 </Tab>
 
-                <Tab text="Операции" closable="false">
+                <Tab fx:id="operationsTab" text="Операции" closable="false">
                     <content>
                         <fx:include source="OperationsView.fxml"/>
                     </content>
                 </Tab>
 
-                <Tab text="Пользователи" closable="false">
+                <Tab fx:id="usersTab" text="Пользователи" closable="false">
                     <content>
                         <fx:include source="UsersView.fxml"/>
                     </content>
                 </Tab>
 
-                <Tab text="Отчёты" closable="false">
+                <Tab fx:id="reportsTab" text="Отчёты" closable="false">
                     <content>
                         <fx:include source="ReportsView.fxml"/>
                     </content>

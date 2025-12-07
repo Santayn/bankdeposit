@@ -4,8 +4,8 @@ import org.santayn.bankdeposit.models.User;
 import org.springframework.stereotype.Component;
 
 /**
- * Контекст текущей сессии приложения (JavaFX).
- * Хранит вошедшего пользователя.
+ * Хранит информацию о текущем пользователе для UI-уровня.
+ * Должен заполняться в LoginController после успешной авторизации.
  */
 @Component
 public class SessionContext {
@@ -20,11 +20,11 @@ public class SessionContext {
         this.currentUser = currentUser;
     }
 
-    public boolean isAuthenticated() {
-        return currentUser != null;
-    }
-
     public void clear() {
         this.currentUser = null;
+    }
+
+    public boolean isAuthenticated() {
+        return currentUser != null && Boolean.TRUE.equals(currentUser.getActive());
     }
 }

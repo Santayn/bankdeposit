@@ -47,9 +47,11 @@
                                  text="Название" prefWidth="180.0"/>
                     <TableColumn fx:id="termColumn"
                                  text="Срок" prefWidth="90.0"/>
-                    <!-- ВАЖНО: экранируем % -->
+
+                    <!-- НЕ начинаем с % -->
                     <TableColumn fx:id="rateColumn"
-                                 text="%% годовых" prefWidth="110.0"/>
+                                 text="Ставка (% годовых)" prefWidth="130.0"/>
+
                     <TableColumn fx:id="minAmountColumn"
                                  text="Мин. сумма" prefWidth="110.0"/>
                     <TableColumn fx:id="maxAmountColumn"
@@ -84,8 +86,8 @@
                         <TextField fx:id="nameField"
                                    GridPane.rowIndex="0" GridPane.columnIndex="1"/>
 
-                        <!-- ВАЖНО: экранируем % -->
-                        <Label text="%% годовых:"
+                        <!-- НЕ начинаем текст с % -->
+                        <Label text="Ставка (процентов годовых):"
                                GridPane.rowIndex="1" GridPane.columnIndex="0"/>
                         <TextField fx:id="rateField"
                                    promptText="Например, 7.5"

@@ -4,25 +4,16 @@ import javafx.beans.binding.Bindings;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.fxml.FXML;
-import javafx.scene.control.Alert;
-import javafx.scene.control.Button;
-import javafx.scene.control.ComboBox;
-import javafx.scene.control.ListCell;
-import javafx.scene.control.TableCell;
-import javafx.scene.control.TableColumn;
-import javafx.scene.control.TableView;
-import javafx.scene.control.TextField;
+import javafx.scene.control.*;
 import javafx.scene.control.cell.PropertyValueFactory;
 import lombok.RequiredArgsConstructor;
 import org.santayn.bankdeposit.models.Customer;
 import org.santayn.bankdeposit.models.DepositContract;
-import org.santayn.bankdeposit.models.DepositContractStatus;
 import org.santayn.bankdeposit.models.DepositOperation;
-import org.santayn.bankdeposit.service.DepositContractService;
-import org.santayn.bankdeposit.service.DepositOperationService;
-import org.santayn.bankdeposit.service.EntityNotFoundException;
-import org.santayn.bankdeposit.service.InvalidOperationException;
+import org.santayn.bankdeposit.models.User;
+import org.santayn.bankdeposit.service.*;
 import org.springframework.stereotype.Component;
+
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -32,12 +23,9 @@ import java.util.List;
 /**
  * Контроллер вкладки "Операции".
  *
- * Текущая концепция слоя:
- * - DepositContractService: бизнес-операции по договору (deposit/withdraw и т.п.).
- * - DepositOperationService: чтение истории операций.
- *
- * Начисление процентов пока не реализовано в сервисе,
- * поэтому в UI оставлена безопасная заглушка.
+ * UI-доступ:
+ * - проводить операции могут: ADMIN, OPERATOR
+ * - остальные роли: просмотр операций
  */
 @Component
 @RequiredArgsConstructor
@@ -45,6 +33,9 @@ public class OperationsController {
 
     private final DepositContractService depositContractService;
     private final DepositOperationService depositOperationService;
+
+    private final SessionContext sessionContext;
+    private final org.santayn.bankdeposit.service.UiAccessManager uiAccessManager;
 
     @FXML
     private ComboBox<DepositContract> contractComboBox;
@@ -92,6 +83,8 @@ public class OperationsController {
         setupContractComboBox();
         setupOperationsTable();
         loadContracts();
+
+        applyRoleUiAccess();
     }
 
     private void setupContractComboBox() {
@@ -99,23 +92,19 @@ public class OperationsController {
             @Override
             protected void updateItem(DepositContract item, boolean empty) {
                 super.updateItem(item, empty);
-
                 if (empty || item == null) {
                     setText(null);
-                    return;
+                } else {
+                    Customer c = item.getCustomer();
+                    String customerName = "";
+                    if (c != null) {
+                        String middle = c.getMiddleName() != null && !c.getMiddleName().isBlank()
+                                ? " " + c.getMiddleName().trim()
+                                : "";
+                        customerName = (safe(c.getLastName()) + " " + safe(c.getFirstName()) + middle).trim();
+                    }
+                    setText("№ " + safe(item.getContractNumber()) + " / " + customerName);
                 }
-
-                Customer c = item.getCustomer();
-                String customerName = "";
-                if (c != null) {
-                    String middle = c.getMiddleName() != null && !c.getMiddleName().isBlank()
-                            ? " " + c.getMiddleName().trim()
-                            : "";
-                    customerName = (safe(c.getLastName()) + " " + safe(c.getFirstName()) + middle).trim();
-                }
-
-                String status = item.getStatus() != null ? item.getStatus().name() : "";
-                setText("№ " + safe(item.getContractNumber()) + " / " + customerName + " / " + status);
             }
         });
 
@@ -123,31 +112,25 @@ public class OperationsController {
             @Override
             protected void updateItem(DepositContract item, boolean empty) {
                 super.updateItem(item, empty);
-
                 if (empty || item == null) {
                     setText(null);
-                    return;
+                } else {
+                    Customer c = item.getCustomer();
+                    String customerName = "";
+                    if (c != null) {
+                        String middle = c.getMiddleName() != null && !c.getMiddleName().isBlank()
+                                ? " " + c.getMiddleName().trim()
+                                : "";
+                        customerName = (safe(c.getLastName()) + " " + safe(c.getFirstName()) + middle).trim();
+                    }
+                    setText("№ " + safe(item.getContractNumber()) + " / " + customerName);
                 }
-
-                Customer c = item.getCustomer();
-                String customerName = "";
-                if (c != null) {
-                    String middle = c.getMiddleName() != null && !c.getMiddleName().isBlank()
-                            ? " " + c.getMiddleName().trim()
-                            : "";
-                    customerName = (safe(c.getLastName()) + " " + safe(c.getFirstName()) + middle).trim();
-                }
-
-                setText("№ " + safe(item.getContractNumber()) + " / " + customerName);
             }
         });
 
         contractComboBox.getSelectionModel()
                 .selectedItemProperty()
-                .addListener((obs, oldV, newV) -> {
-                    loadOperations();
-                    updateButtonsState(newV);
-                });
+                .addListener((obs, oldV, newV) -> loadOperations());
     }
 
     private void setupOperationsTable() {
@@ -163,13 +146,12 @@ public class OperationsController {
                 super.updateItem(item, empty);
                 if (empty || item == null) {
                     setText(null);
-                    return;
+                } else {
+                    setText(item.format(formatter));
                 }
-                setText(item.format(formatter));
             }
         });
 
-        // Берём enum через getType()
         typeColumn.setCellValueFactory(cellData ->
                 Bindings.createStringBinding(() ->
                         cellData.getValue().getType() != null
@@ -183,13 +165,9 @@ public class OperationsController {
     private void loadContracts() {
         List<DepositContract> all = depositContractService.getAllContracts();
         contractComboBox.getItems().setAll(all);
-
         if (!all.isEmpty()) {
             contractComboBox.getSelectionModel().selectFirst();
         }
-
-        DepositContract selected = contractComboBox.getValue();
-        updateButtonsState(selected);
         loadOperations();
     }
 
@@ -199,8 +177,19 @@ public class OperationsController {
             operations.clear();
             return;
         }
-
         operations.setAll(depositOperationService.getOperationsByContract(contract.getId()));
+    }
+
+    private void applyRoleUiAccess() {
+        User current = sessionContext.getCurrentUser();
+        boolean canOperate = uiAccessManager.canOperateDeposits(current);
+
+        depositButton.setDisable(!canOperate);
+        withdrawButton.setDisable(!canOperate);
+        interestButton.setDisable(!canOperate);
+
+        amountField.setDisable(!canOperate);
+        descriptionField.setDisable(!canOperate);
     }
 
     @FXML
@@ -210,13 +199,15 @@ public class OperationsController {
 
     @FXML
     private void onDeposit() {
+        User current = sessionContext.getCurrentUser();
+        if (!uiAccessManager.canOperateDeposits(current)) {
+            showInfo("Пополнение", "Недостаточно прав для операций.");
+            return;
+        }
+
         DepositContract contract = contractComboBox.getValue();
         if (contract == null || contract.getId() == null) {
             showInfo("Пополнение", "Сначала выберите договор.");
-            return;
-        }
-        if (contract.getStatus() != DepositContractStatus.OPEN) {
-            showInfo("Пополнение", "Пополнение доступно только для активных вкладов.");
             return;
         }
 
@@ -225,17 +216,10 @@ public class OperationsController {
             return;
         }
 
-        String description = descriptionField.getText();
-
         try {
-            // Ожидаем, что сигнатура у сервиса:
-            // deposit(Long contractId, BigDecimal amount, String description)
-            depositContractService.deposit(contract.getId(), amount, description);
-
+            depositOperationService.deposit(contract.getId(), amount);
             clearInput();
-            reloadContractInCombo(contract.getId());
             loadOperations();
-
         } catch (InvalidOperationException | EntityNotFoundException e) {
             showError("Ошибка пополнения", e.getMessage());
         } catch (Exception e) {
@@ -245,13 +229,15 @@ public class OperationsController {
 
     @FXML
     private void onWithdraw() {
+        User current = sessionContext.getCurrentUser();
+        if (!uiAccessManager.canOperateDeposits(current)) {
+            showInfo("Снятие", "Недостаточно прав для операций.");
+            return;
+        }
+
         DepositContract contract = contractComboBox.getValue();
         if (contract == null || contract.getId() == null) {
             showInfo("Снятие", "Сначала выберите договор.");
-            return;
-        }
-        if (contract.getStatus() != DepositContractStatus.OPEN) {
-            showInfo("Снятие", "Снятие доступно только для активных вкладов.");
             return;
         }
 
@@ -260,17 +246,10 @@ public class OperationsController {
             return;
         }
 
-        String description = descriptionField.getText();
-
         try {
-            // Ожидаем, что сигнатура у сервиса:
-            // withdraw(Long contractId, BigDecimal amount, String description)
-            depositContractService.withdraw(contract.getId(), amount, description);
-
+            depositOperationService.withdraw(contract.getId(), amount);
             clearInput();
-            reloadContractInCombo(contract.getId());
             loadOperations();
-
         } catch (InvalidOperationException | EntityNotFoundException e) {
             showError("Ошибка снятия", e.getMessage());
         } catch (Exception e) {
@@ -278,81 +257,46 @@ public class OperationsController {
         }
     }
 
-    /**
-     * Начисление процентов.
-     *
-     * В текущей версии проекта метод бизнес-начисления
-     * в DepositContractService отсутствует.
-     * Поэтому оставляем безопасную заглушку.
-     */
     @FXML
     private void onAccrueInterest() {
+        User current = sessionContext.getCurrentUser();
+        if (!uiAccessManager.canOperateDeposits(current)) {
+            showInfo("Начисление процентов", "Недостаточно прав для операций.");
+            return;
+        }
+
         DepositContract contract = contractComboBox.getValue();
         if (contract == null || contract.getId() == null) {
             showInfo("Начисление процентов", "Сначала выберите договор.");
             return;
         }
-        if (contract.getStatus() != DepositContractStatus.OPEN) {
-            showInfo("Начисление процентов", "Начисление доступно только для активных вкладов.");
+
+        BigDecimal amount = parseAmount();
+        if (amount == null) {
             return;
         }
 
-        showInfo("Начисление процентов",
-                "Функция начисления процентов пока не реализована в сервисном слое.\n" +
-                        "Как только добавишь метод в DepositContractService, " +
-                        "мы подключим его сюда.");
-    }
-
-    private void reloadContractInCombo(Long contractId) {
-        List<DepositContract> all = depositContractService.getAllContracts();
-        contractComboBox.getItems().setAll(all);
-
-        if (contractId == null) {
-            if (!all.isEmpty()) {
-                contractComboBox.getSelectionModel().selectFirst();
-            }
-            updateButtonsState(contractComboBox.getValue());
-            return;
+        try {
+            depositOperationService.accrueInterest(contract.getId(), amount);
+            clearInput();
+            loadOperations();
+        } catch (InvalidOperationException | EntityNotFoundException e) {
+            showError("Ошибка начисления процентов", e.getMessage());
+        } catch (Exception e) {
+            showError("Неожиданная ошибка", e.toString());
         }
-
-        for (DepositContract c : all) {
-            if (contractId.equals(c.getId())) {
-                contractComboBox.getSelectionModel().select(c);
-                break;
-            }
-        }
-
-        updateButtonsState(contractComboBox.getValue());
-    }
-
-    private void updateButtonsState(DepositContract contract) {
-        boolean enabled = contract != null && contract.getStatus() == DepositContractStatus.OPEN;
-
-        depositButton.setDisable(!enabled);
-        withdrawButton.setDisable(!enabled);
-
-        // Пока начисление не реализовано — можно оставить выключенной всегда,
-        // либо включать только для OPEN, но обработчик всё равно покажет заглушку.
-        interestButton.setDisable(!enabled);
     }
 
     private BigDecimal parseAmount() {
         String text = amountField.getText();
-        if (text == null || text.isBlank()) {
-            showError("Неверная сумма", "Введите сумму операции.");
+        BigDecimal amount = MoneyUtil.parsePositiveMoney(text);
+
+        if (amount == null) {
+            showError("Неверная сумма", "Введите корректную сумму больше нуля. Пример: 100000.50");
             return null;
         }
-        try {
-            BigDecimal amount = new BigDecimal(text.trim().replace(',', '.'));
-            if (amount.compareTo(BigDecimal.ZERO) <= 0) {
-                showError("Неверная сумма", "Сумма должна быть больше нуля.");
-                return null;
-            }
-            return amount;
-        } catch (Exception e) {
-            showError("Неверная сумма", "Не удалось разобрать сумму. Пример: 100000.50");
-            return null;
-        }
+
+        return amount;
     }
 
     private void clearInput() {

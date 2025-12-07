@@ -13,8 +13,11 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
-import lombok.Data;
+import lombok.Getter;
 import lombok.NoArgsConstructor;
+import lombok.Setter;
+import lombok.ToString;
+import lombok.EqualsAndHashCode;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -24,10 +27,13 @@ import java.time.LocalDateTime;
  */
 @Entity
 @Table(name = "deposit_operations")
-@Data
+@Getter
+@Setter
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
+@ToString(exclude = "contract")
+@EqualsAndHashCode(onlyExplicitlyIncluded = true)
 public class DepositOperation {
 
     /**
@@ -35,6 +41,7 @@ public class DepositOperation {
      */
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @EqualsAndHashCode.Include
     private Long id;
 
     /**
@@ -43,6 +50,12 @@ public class DepositOperation {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "contract_id", nullable = false)
     private DepositContract contract;
+
+    /**
+     * Сумма операции.
+     */
+    @Column(name = "amount", nullable = false, precision = 19, scale = 2)
+    private BigDecimal amount;
 
     /**
      * Дата и время операции.
@@ -54,20 +67,12 @@ public class DepositOperation {
      * Тип операции.
      */
     @Enumerated(EnumType.STRING)
-    @Column(name = "operation_type", length = 30, nullable = false)
+    @Column(name = "operation_type", nullable = false, length = 30)
     private DepositOperationType type;
 
     /**
-     * Сумма операции.
-     * Для снятия можно хранить положительную сумму и интерпретировать знак по типу операции.
-     */
-    @Column(name = "amount", precision = 18, scale = 2)
-    private BigDecimal amount;
-
-    /**
-     * Дополнительное описание (примечание).
+     * Описание операции.
      */
     @Column(name = "description", length = 255)
     private String description;
-
 }

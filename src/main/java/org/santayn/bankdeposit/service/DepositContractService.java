@@ -31,9 +31,13 @@ public class DepositContractService {
     private final CustomerRepository customerRepository;
     private final DepositOperationService depositOperationService;
 
+    // -------------------- ЧТЕНИЕ ДЛЯ UI --------------------
+
     @Transactional(readOnly = true)
     public List<DepositContract> getAllContracts() {
-        return depositContractRepository.findAll();
+        List<DepositContract> contracts = depositContractRepository.findAll();
+        initializeContractsForUi(contracts);
+        return contracts;
     }
 
     @Transactional(readOnly = true)
@@ -41,12 +45,16 @@ public class DepositContractService {
         if (customerId == null) {
             throw new InvalidOperationException("Не указан клиент");
         }
-        return depositContractRepository.findByCustomerId(customerId);
+        List<DepositContract> contracts = depositContractRepository.findByCustomerId(customerId);
+        initializeContractsForUi(contracts);
+        return contracts;
     }
 
     @Transactional(readOnly = true)
     public List<DepositContract> getActiveContracts() {
-        return depositContractRepository.findByStatus(DepositContractStatus.OPEN);
+        List<DepositContract> contracts = depositContractRepository.findByStatus(DepositContractStatus.OPEN);
+        initializeContractsForUi(contracts);
+        return contracts;
     }
 
     @Transactional(readOnly = true)
@@ -54,8 +62,10 @@ public class DepositContractService {
         if (id == null) {
             throw new InvalidOperationException("Не указан идентификатор договора");
         }
-        return depositContractRepository.findById(id)
+        DepositContract contract = depositContractRepository.findById(id)
                 .orElseThrow(() -> new EntityNotFoundException("Договор с id=" + id + " не найден"));
+        initializeContractForUi(contract);
+        return contract;
     }
 
     /**
@@ -93,8 +103,9 @@ public class DepositContractService {
         contract.setOpenDate(openDate != null ? openDate : LocalDate.now());
         contract.setStatus(DepositContractStatus.OPEN);
 
-        contract.setInitialAmount(normalizeMoney(initialAmount));
-        contract.setCurrentBalance(normalizeMoney(initialAmount));
+        BigDecimal normalizedInitial = normalizeMoney(initialAmount);
+        contract.setInitialAmount(normalizedInitial);
+        contract.setCurrentBalance(normalizedInitial);
 
         BigDecimal rate = product.getBaseInterestRate() != null
                 ? product.getBaseInterestRate()
@@ -108,11 +119,12 @@ public class DepositContractService {
         depositOperationService.createOperation(
                 saved,
                 DepositOperationType.OPENING,
-                normalizeMoney(initialAmount),
+                normalizedInitial,
                 "Открытие вклада",
                 LocalDateTime.now()
         );
 
+        initializeContractForUi(saved);
         return saved;
     }
 
@@ -126,7 +138,6 @@ public class DepositContractService {
             String description
     ) {
         DepositContract contract = getContractById(contractId);
-
         ensureOpen(contract);
 
         DepositProduct product = contract.getProduct();
@@ -138,7 +149,8 @@ public class DepositContractService {
             throw new InvalidOperationException("Сумма пополнения должна быть больше нуля");
         }
 
-        BigDecimal newBalance = normalizeMoney(contract.getCurrentBalance()).add(normalizeMoney(amount));
+        BigDecimal normalizedAmount = normalizeMoney(amount);
+        BigDecimal newBalance = normalizeMoney(contract.getCurrentBalance()).add(normalizedAmount);
 
         if (product != null && product.getMaxAmount() != null) {
             if (newBalance.compareTo(product.getMaxAmount()) > 0) {
@@ -153,11 +165,12 @@ public class DepositContractService {
         depositOperationService.createOperation(
                 saved,
                 DepositOperationType.DEPOSIT,
-                normalizeMoney(amount),
+                normalizedAmount,
                 description != null && !description.isBlank() ? description.trim() : "Пополнение вклада",
                 LocalDateTime.now()
         );
 
+        initializeContractForUi(saved);
         return saved;
     }
 
@@ -171,7 +184,6 @@ public class DepositContractService {
             String description
     ) {
         DepositContract contract = getContractById(contractId);
-
         ensureOpen(contract);
 
         DepositProduct product = contract.getProduct();
@@ -210,6 +222,7 @@ public class DepositContractService {
                 LocalDateTime.now()
         );
 
+        initializeContractForUi(saved);
         return saved;
     }
 
@@ -224,7 +237,6 @@ public class DepositContractService {
             LocalDateTime dateTime
     ) {
         DepositContract contract = getContractById(contractId);
-
         ensureOpen(contract);
 
         if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
@@ -244,6 +256,7 @@ public class DepositContractService {
                 dateTime != null ? dateTime : LocalDateTime.now()
         );
 
+        initializeContractForUi(saved);
         return saved;
     }
 
@@ -253,7 +266,6 @@ public class DepositContractService {
     @Transactional
     public DepositContract closeContract(Long contractId, LocalDate closeDate) {
         DepositContract contract = getContractById(contractId);
-
         ensureOpen(contract);
 
         contract.setStatus(DepositContractStatus.CLOSED);
@@ -264,7 +276,6 @@ public class DepositContractService {
         BigDecimal остаток = normalizeMoney(saved.getCurrentBalance());
 
         if (остаток.compareTo(BigDecimal.ZERO) > 0) {
-            // фиксируем закрытие как отдельную операцию "CLOSING" на сумму остатка
             depositOperationService.createOperation(
                     saved,
                     DepositOperationType.CLOSING,
@@ -276,12 +287,13 @@ public class DepositContractService {
             depositOperationService.createOperation(
                     saved,
                     DepositOperationType.CLOSING,
-                    BigDecimal.ONE,
+                    BigDecimal.ONE.setScale(2, RoundingMode.HALF_UP),
                     "Закрытие вклада (остаток 0)",
                     LocalDateTime.now()
             );
         }
 
+        initializeContractForUi(saved);
         return saved;
     }
 
@@ -313,8 +325,44 @@ public class DepositContractService {
     }
 
     private String generateContractNumber() {
-        // Простой генератор номера договора для учебного проекта
         String uid = UUID.randomUUID().toString().replace("-", "").substring(0, 10).toUpperCase();
         return "DC-" + uid;
+    }
+
+    /**
+     * ВАЖНО для JavaFX:
+     * Принудительно инициализируем lazy-ссылки внутри транзакции,
+     * чтобы UI не падал после закрытия session.
+     */
+    private void initializeContractsForUi(List<DepositContract> contracts) {
+        if (contracts == null) {
+            return;
+        }
+        for (DepositContract c : contracts) {
+            initializeContractForUi(c);
+        }
+    }
+
+    private void initializeContractForUi(DepositContract contract) {
+        if (contract == null) {
+            return;
+        }
+
+        Customer customer = contract.getCustomer();
+        if (customer != null) {
+            customer.getId();
+            customer.getLastName();
+            customer.getFirstName();
+            customer.getMiddleName();
+        }
+
+        DepositProduct product = contract.getProduct();
+        if (product != null) {
+            product.getId();
+            product.getName();
+            product.getAllowReplenishment();
+            product.getAllowPartialWithdrawal();
+            product.getBaseInterestRate();
+        }
     }
 }
