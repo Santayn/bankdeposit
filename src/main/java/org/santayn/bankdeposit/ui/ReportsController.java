@@ -23,7 +23,6 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Objects;
 
 /**
  * Контроллер вкладки "Отчёты".
@@ -31,7 +30,10 @@ import java.util.Objects;
  * Функции:
  * 1) Договоры выбранного клиента
  * 2) Активные вклады клиента
- * 3) Операции за период (+ фильтр по типу)
+ * 3) Операции за период (+ фильтр по типу + фильтр по клиенту)
+ *
+ * Дополнительно:
+ * - Возможность выбора "Все клиенты" для отчёта по операциям.
  *
  * Работает с ReportsView.fxml.
  */
@@ -102,8 +104,8 @@ public class ReportsController {
     private TableColumn<DepositContract, String> currentBalanceColumn;
 
     /**
-     * В твоём FXML ранее был столбец "% годовых" без fx:id.
-     * Если добавишь fx:id="rateColumn" — он тоже заполнится.
+     * Если в FXML есть fx:id="rateColumn",
+     * тогда столбец "% годовых" тоже заполнится.
      */
     @FXML
     private TableColumn<DepositContract, String> rateColumn;
@@ -145,8 +147,8 @@ public class ReportsController {
         bindItems();
 
         loadDictionaries();
+        setupButtonsAvailability();
 
-        // Небольшой удобный дефолт периода
         LocalDate now = LocalDate.now();
         if (fromDatePicker != null) {
             fromDatePicker.setValue(now.minusMonths(1));
@@ -179,7 +181,7 @@ public class ReportsController {
             @Override
             public String toString(Customer c) {
                 if (c == null) {
-                    return "";
+                    return "Все клиенты";
                 }
                 String middle = c.getMiddleName() != null && !c.getMiddleName().isBlank()
                         ? " " + c.getMiddleName().trim()
@@ -199,7 +201,7 @@ public class ReportsController {
             @Override
             protected void updateItem(Customer item, boolean empty) {
                 super.updateItem(item, empty);
-                if (empty || item == null) {
+                if (empty) {
                     setText(null);
                 } else {
                     setText(converter.toString(item));
@@ -211,7 +213,7 @@ public class ReportsController {
             @Override
             protected void updateItem(Customer item, boolean empty) {
                 super.updateItem(item, empty);
-                if (empty || item == null) {
+                if (empty) {
                     setText(null);
                 } else {
                     setText(converter.toString(item));
@@ -274,7 +276,34 @@ public class ReportsController {
             }
         });
 
-        operationTypeComboBox.getSelectionModel().selectFirst();
+        operationTypeComboBox.getSelectionModel().selectFirst(); // "Все"
+    }
+
+    private void setupButtonsAvailability() {
+        if (customerComboBox == null) {
+            return;
+        }
+
+        customerComboBox.valueProperty().addListener((obs, oldVal, newVal) -> {
+            boolean конкретныйКлиент = newVal != null && newVal.getId() != null;
+
+            if (buildContractsButton != null) {
+                buildContractsButton.setDisable(!конкретныйКлиент);
+            }
+            if (buildActiveContractsButton != null) {
+                buildActiveContractsButton.setDisable(!конкретныйКлиент);
+            }
+        });
+
+        Customer current = customerComboBox.getValue();
+        boolean конкретныйКлиент = current != null && current.getId() != null;
+
+        if (buildContractsButton != null) {
+            buildContractsButton.setDisable(!конкретныйКлиент);
+        }
+        if (buildActiveContractsButton != null) {
+            buildActiveContractsButton.setDisable(!конкретныйКлиент);
+        }
     }
 
     // ---------------------- Table setup ----------------------
@@ -369,12 +398,8 @@ public class ReportsController {
 
         if (opTypeColumn != null) {
             opTypeColumn.setCellValueFactory(cell -> {
-                try {
-                    var t = cell.getValue().getType();
-                    return new SimpleStringProperty(t != null ? t.name() : "");
-                } catch (Exception e) {
-                    return new SimpleStringProperty("");
-                }
+                DepositOperationType t = cell.getValue().getType();
+                return new SimpleStringProperty(t != null ? t.name() : "");
             });
         }
 
@@ -384,13 +409,9 @@ public class ReportsController {
 
         if (opContractColumn != null) {
             opContractColumn.setCellValueFactory(cell -> {
-                try {
-                    DepositContract c = cell.getValue().getContract();
-                    String num = c != null ? c.getContractNumber() : "";
-                    return new SimpleStringProperty(num != null ? num : "");
-                } catch (Exception e) {
-                    return new SimpleStringProperty("");
-                }
+                DepositContract c = cell.getValue().getContract();
+                String num = c != null ? c.getContractNumber() : "";
+                return new SimpleStringProperty(num != null ? num : "");
             });
         }
 
@@ -410,16 +431,27 @@ public class ReportsController {
     private void loadDictionaries() {
         try {
             List<Customer> cl = reportService.getAllCustomers();
-            customers.setAll(cl);
 
-            if (customerComboBox != null && !customers.isEmpty()
-                    && customerComboBox.getSelectionModel().getSelectedItem() == null) {
-                customerComboBox.getSelectionModel().selectFirst();
+            List<Customer> prepared = new ArrayList<>();
+            prepared.add(null); // "Все клиенты"
+            prepared.addAll(cl);
+
+            customers.setAll(prepared);
+
+            if (customerComboBox != null) {
+                if (customerComboBox.getSelectionModel().getSelectedItem() == null) {
+                    customerComboBox.getSelectionModel().selectFirst(); // "Все клиенты"
+                }
             }
 
         } catch (Exception e) {
             customers.clear();
+            if (customerComboBox != null) {
+                customerComboBox.getSelectionModel().clearSelection();
+            }
         }
+
+        setupButtonsAvailability();
     }
 
     // ---------------------- Build reports ----------------------
@@ -428,7 +460,7 @@ public class ReportsController {
     private void onBuildCustomerContracts() {
         Customer customer = customerComboBox != null ? customerComboBox.getValue() : null;
         if (customer == null || customer.getId() == null) {
-            showError("Договоры клиента", "Выберите клиента.");
+            showError("Договоры клиента", "Выберите конкретного клиента.");
             return;
         }
 
@@ -440,7 +472,6 @@ public class ReportsController {
             if (list.isEmpty()) {
                 showInfo("Договоры клиента", "У клиента нет договоров.");
             }
-
         } catch (Exception ex) {
             showError("Договоры клиента", ex.toString());
         }
@@ -450,7 +481,7 @@ public class ReportsController {
     private void onBuildActiveCustomerContracts() {
         Customer customer = customerComboBox != null ? customerComboBox.getValue() : null;
         if (customer == null || customer.getId() == null) {
-            showError("Активные вклады", "Выберите клиента.");
+            showError("Активные вклады", "Выберите конкретного клиента.");
             return;
         }
 
@@ -462,7 +493,6 @@ public class ReportsController {
             if (list.isEmpty()) {
                 showInfo("Активные вклады", "У клиента нет активных вкладов.");
             }
-
         } catch (Exception ex) {
             showError("Активные вклады", ex.toString());
         }
@@ -487,9 +517,16 @@ public class ReportsController {
                 ? operationTypeComboBox.getValue()
                 : null;
 
+        Customer customer = customerComboBox != null ? customerComboBox.getValue() : null;
+        Long customerId = customer != null ? customer.getId() : null; // null = все клиенты
+
         try {
-            List<DepositOperation> list =
-                    reportService.getOperationsByPeriodAndType(from, to, type);
+            List<DepositOperation> list = reportService.getOperationsByPeriodAndTypeForCustomer(
+                    customerId,
+                    from,
+                    to,
+                    type
+            );
 
             operations.setAll(list);
             contracts.clear();
@@ -497,7 +534,6 @@ public class ReportsController {
             if (list.isEmpty()) {
                 showInfo("Операции за период", "За выбранный период операций не найдено.");
             }
-
         } catch (Exception ex) {
             showError("Операции за период", ex.toString());
         }
