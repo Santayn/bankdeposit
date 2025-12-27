@@ -6,6 +6,7 @@ import javafx.collections.ObservableList;
 import javafx.fxml.FXML;
 import javafx.scene.control.*;
 import javafx.scene.control.cell.PropertyValueFactory;
+import javafx.stage.FileChooser;
 import javafx.util.StringConverter;
 import lombok.RequiredArgsConstructor;
 import org.santayn.bankdeposit.models.Customer;
@@ -17,6 +18,7 @@ import org.santayn.bankdeposit.models.DepositProduct;
 import org.santayn.bankdeposit.service.ReportService;
 import org.springframework.stereotype.Component;
 
+import java.io.File;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -34,6 +36,7 @@ import java.util.List;
  *
  * Дополнительно:
  * - Возможность выбора "Все клиенты" для отчёта по операциям.
+ * - Экспорт текущего результата в Excel (.xlsx).
  *
  * Работает с ReportsView.fxml.
  */
@@ -47,6 +50,14 @@ public class ReportsController {
 
     @FXML
     private Button refreshButton;
+
+    /**
+     * Кнопка экспорта.
+     * В FXML нужно добавить:
+     * <Button fx:id="exportExcelButton" text="Экспорт в Excel" onAction="#onExportToExcel"/>
+     */
+    @FXML
+    private Button exportExcelButton;
 
     // ---------------------- Параметры отчёта ----------------------
 
@@ -148,6 +159,7 @@ public class ReportsController {
 
         loadDictionaries();
         setupButtonsAvailability();
+        setupExportAvailability();
 
         LocalDate now = LocalDate.now();
         if (fromDatePicker != null) {
@@ -304,6 +316,28 @@ public class ReportsController {
         if (buildActiveContractsButton != null) {
             buildActiveContractsButton.setDisable(!конкретныйКлиент);
         }
+    }
+
+    private void setupExportAvailability() {
+        if (exportExcelButton == null) {
+            return;
+        }
+
+        // Кнопка активна, если есть хоть какие-то результаты в одной из таблиц
+        exportExcelButton.setDisable(true);
+
+        contracts.addListener((javafx.collections.ListChangeListener<? super DepositContract>) c -> refreshExportButton());
+        operations.addListener((javafx.collections.ListChangeListener<? super DepositOperation>) c -> refreshExportButton());
+
+        refreshExportButton();
+    }
+
+    private void refreshExportButton() {
+        if (exportExcelButton == null) {
+            return;
+        }
+        boolean hasData = (contracts != null && !contracts.isEmpty()) || (operations != null && !operations.isEmpty());
+        exportExcelButton.setDisable(!hasData);
     }
 
     // ---------------------- Table setup ----------------------
@@ -472,6 +506,9 @@ public class ReportsController {
             if (list.isEmpty()) {
                 showInfo("Договоры клиента", "У клиента нет договоров.");
             }
+
+            refreshExportButton();
+
         } catch (Exception ex) {
             showError("Договоры клиента", ex.toString());
         }
@@ -493,6 +530,9 @@ public class ReportsController {
             if (list.isEmpty()) {
                 showInfo("Активные вклады", "У клиента нет активных вкладов.");
             }
+
+            refreshExportButton();
+
         } catch (Exception ex) {
             showError("Активные вклады", ex.toString());
         }
@@ -534,6 +574,9 @@ public class ReportsController {
             if (list.isEmpty()) {
                 showInfo("Операции за период", "За выбранный период операций не найдено.");
             }
+
+            refreshExportButton();
+
         } catch (Exception ex) {
             showError("Операции за период", ex.toString());
         }
@@ -543,6 +586,76 @@ public class ReportsController {
     private void onClearResults() {
         contracts.clear();
         operations.clear();
+        refreshExportButton();
+    }
+
+    // ---------------------- Export to Excel ----------------------
+
+    /**
+     * Экспортирует текущий результат (то, что показано в таблицах) в Excel.
+     *
+     * Правило:
+     * - Если есть договоры -> лист "Договоры"
+     * - Если есть операции -> лист "Операции"
+     * - Можно экспортировать оба сразу (если не пусты оба списка)
+     */
+    @FXML
+    private void onExportToExcel() {
+        boolean hasContracts = contracts != null && !contracts.isEmpty();
+        boolean hasOperations = operations != null && !operations.isEmpty();
+
+        if (!hasContracts && !hasOperations) {
+            showError("Экспорт в Excel", "Нет данных для экспорта. Сначала постройте отчёт.");
+            return;
+        }
+
+        FileChooser chooser = new FileChooser();
+        chooser.setTitle("Сохранить отчёт в Excel");
+        chooser.getExtensionFilters().add(
+                new FileChooser.ExtensionFilter("Excel файл (*.xlsx)", "*.xlsx")
+        );
+        chooser.setInitialFileName(buildDefaultExcelFileName(hasContracts, hasOperations));
+
+        File file = chooser.showSaveDialog(
+                exportExcelButton != null && exportExcelButton.getScene() != null
+                        ? exportExcelButton.getScene().getWindow()
+                        : null
+        );
+
+        if (file == null) {
+            return; // отмена
+        }
+
+        // На всякий случай — добавим расширение, если пользователь его убрал
+        if (!file.getName().toLowerCase().endsWith(".xlsx")) {
+            file = new File(file.getParentFile(), file.getName() + ".xlsx");
+        }
+
+        try {
+            List<DepositContract> exportContracts = hasContracts ? new ArrayList<>(contracts) : null;
+            List<DepositOperation> exportOperations = hasOperations ? new ArrayList<>(operations) : null;
+
+            reportService.exportReportsToExcel(exportContracts, exportOperations, file);
+
+            showInfo("Экспорт в Excel", "Отчёт сохранён:\n" + file.getAbsolutePath());
+
+        } catch (Exception ex) {
+            showError("Экспорт в Excel", ex.toString());
+        }
+    }
+
+    private String buildDefaultExcelFileName(boolean hasContracts, boolean hasOperations) {
+        String suffix;
+        if (hasContracts && hasOperations) {
+            suffix = "contracts_and_operations";
+        } else if (hasContracts) {
+            suffix = "contracts";
+        } else {
+            suffix = "operations";
+        }
+
+        String date = LocalDate.now().toString();
+        return "report_" + suffix + "_" + date + ".xlsx";
     }
 
     // ---------------------- Helpers ----------------------

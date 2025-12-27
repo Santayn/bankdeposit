@@ -82,6 +82,7 @@
                             <Button fx:id="clearButton"
                                     text="Очистить"
                                     onAction="#onClearResults"/>
+                            <Button fx:id="exportToExcelButton" text="Экспорт в Excel" onAction="#onExportToExcel"/>
                         </HBox>
 
                     </GridPane>
